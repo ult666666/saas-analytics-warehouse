@@ -1,0 +1,67 @@
+name: dbt docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the static dbt docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "False"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      - name: Install Python and dependencies from uv.lock
+        run: uv sync --locked
+
+      - name: Generate data, build the warehouse and the docs
+        run: |
+          make data
+          make build
+          make docs
+
+      - name: Assemble the site
+        run: |
+          mkdir -p site
+          cp dbt/target/static_index.html site/index.html
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

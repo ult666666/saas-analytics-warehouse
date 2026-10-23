@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Generate data, build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "False"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      - name: Install Python and dependencies from uv.lock
+        run: uv sync --locked
+
+      - name: Generate a small synthetic dataset
+        run: make data MONTHS=24 SCALE=0.25
+
+      - name: dbt build (seed, models, data tests and unit tests)
+        run: make build
+
+      - name: Build the report from the marts
+        run: uv run saasreport --database data/warehouse.duckdb --output-dir "$RUNNER_TEMP/reports"
+
+      - name: Python tests with coverage
+        run: make test
+
+      - name: Lint (ruff, ruff format, mypy, sqlfluff)
+        run: make lint
