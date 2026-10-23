@@ -12,7 +12,7 @@ export DBT_PROFILES_DIR := $(CURDIR)/dbt
 export DBT_SEND_ANONYMOUS_USAGE_STATS := False
 
 .DEFAULT_GOAL := help
-.PHONY: help install data build docs all lint test clean
+.PHONY: help install data build report docs all lint test clean
 
 help: ## List the available targets
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-9s %s\n", $$1, $$2}'
@@ -27,10 +27,13 @@ build: ## Load, transform and test the warehouse (dbt build)
 	@test -f $(RAW_DIR)/plans.csv || { echo "No raw data in $(RAW_DIR): run 'make data' first."; exit 1; }
 	cd dbt && uv run dbt build
 
+report: ## Write the charts and report.md to reports/
+	uv run saasreport --database $(WAREHOUSE) --output-dir reports
+
 docs: ## Generate the static dbt docs page (dbt/target/static_index.html)
 	cd dbt && uv run dbt docs generate --static
 
-all: data build docs ## Run the whole pipeline: data, build, docs
+all: data build report docs ## Run the whole pipeline: data, build, report, docs
 
 lint: ## Ruff lint, ruff format check and mypy
 	uv run ruff check .
