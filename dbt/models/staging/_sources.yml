@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      CSV files written by the saasgen generator to data/raw/ (synthetic data for the fictional
+      company Tallyloom). dbt-duckdb reads them in place through `external_location`. Every
+      column is read as text (`all_varchar`) so that all typing happens explicitly in the
+      staging layer, as it would for a raw landing zone. Money is stored in integer cents.
+    meta:
+      external_location: "read_csv('../data/raw/{name}.csv', header = true, all_varchar = true)"
+    tables:
+      - name: plans
+        description: Price book. One row per plan, billing interval and price version.
+      - name: marketing_spend
+        description: Daily media spend per paid acquisition channel.
+      - name: signups
+        description: Account signups with marketing attribution and firmographics.
+      - name: trials
+        description: Free trials (14 days). At most one per signup.
+      - name: customers
+        description: Signups that converted from a trial to a paid subscription.
+      - name: subscription_events
+        description: >
+          Subscription changes with the time they were requested (occurred_at) and the date
+          they take effect (effective_date).
+      - name: invoices
+        description: One invoice per billing period, issued on the first day of the period.
+      - name: payments
+        description: >
+          Charge attempts against invoices, as received from the payment provider's webhook.
+          Delivery is at-least-once, so the same payment_id can appear more than once.

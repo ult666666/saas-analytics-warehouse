@@ -1,0 +1,44 @@
+name: saas_warehouse
+version: "0.1.0"
+config-version: 2
+profile: saas_warehouse
+require-dbt-version: [">=1.12.0", "<1.13.0"]
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+clean-targets: ["target", "logs"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+vars:
+  # Assumptions used by rpt_unit_economics (documented in docs/METRICS.md).
+  gross_margin_pct: 0.80
+  unit_economics_lookback_months: 12
+  # A signup cohort is complete once this many days have passed after the cohort month ends.
+  funnel_maturity_days: 30
+
+models:
+  saas_warehouse:
+    staging:
+      +schema: staging
+      # Tables, not views: the CSV paths in the source definitions are relative to this
+      # directory, so views over them would only resolve when queried from here. Tables make
+      # the DuckDB file self-contained and parse each CSV once per build.
+      +materialized: table
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+
+seeds:
+  saas_warehouse:
+    +schema: seeds
+    channel_mapping:
+      +column_types:
+        utm_source: varchar
+        channel: varchar

@@ -1,0 +1,20 @@
+version: 2
+
+seeds:
+  - name: channel_mapping
+    description: >
+      Maps the cleaned utm_source of a signup to one of the five acquisition channels used for
+      marketing spend. Kept as a seed so the mapping is data that marketing can review, not
+      logic buried in SQL. A source missing from this file fails the relationships test on
+      stg_signups.utm_source.
+    columns:
+      - name: utm_source
+        description: Cleaned marketing source (lower case); direct means no UTM parameters.
+        data_tests: [unique, not_null]
+      - name: channel
+        description: Acquisition channel.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, content, partner, organic]

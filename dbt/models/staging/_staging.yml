@@ -1,0 +1,303 @@
+version: 2
+
+models:
+  - name: stg_plans
+    description: >
+      Price book, one row per plan price (plan x billing interval x price version). There is
+      one list-price change: version 1 prices end where version 2 prices start.
+    columns:
+      - name: plan_price_id
+        description: Primary key, e.g. growth_monthly_v2.
+        data_tests: [unique, not_null]
+      - name: plan_code
+        description: Plan identifier.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [starter, growth, enterprise]
+      - name: plan_name
+        description: Display name of the plan.
+      - name: plan_tier
+        description: 1 = Starter, 2 = Growth, 3 = Enterprise. Higher tiers cost more per seat.
+        data_tests: [not_null]
+      - name: billing_interval
+        description: How often the price is billed.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [month, year]
+      - name: unit_amount_usd
+        description: List price per seat for one billing interval (a year for annual plans).
+        data_tests: [not_null]
+      - name: currency
+        description: ISO currency code; always USD.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [USD]
+      - name: valid_from
+        description: First day the price applies to new subscriptions and plan changes.
+        data_tests: [not_null]
+      - name: valid_to
+        description: Day the next price version starts (exclusive); null for current prices.
+
+  - name: stg_marketing_spend
+    description: Daily media spend per paid channel. Organic acquisition has no spend rows.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [spend_date, channel]
+    columns:
+      - name: spend_date
+        description: Day the spend was incurred.
+        data_tests: [not_null]
+      - name: channel
+        description: Paid acquisition channel.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, content, partner]
+      - name: spend_usd
+        description: Spend in US dollars.
+        data_tests:
+          - not_null
+          - expression_is_true:
+              arguments:
+                expression: "spend_usd >= 0"
+
+  - name: stg_signups
+    description: >
+      One row per signup. utm_source is cleaned (lower case, trimmed, missing = direct) so it
+      can be mapped to a channel with the channel_mapping seed.
+    columns:
+      - name: signup_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: signed_up_at
+        description: Signup timestamp (UTC).
+        data_tests: [not_null]
+      - name: signup_date
+        description: Signup date (UTC).
+        data_tests: [not_null]
+      - name: utm_source
+        description: Normalised marketing source; every value must exist in channel_mapping.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('channel_mapping')
+                field: utm_source
+      - name: country_code
+        description: ISO 3166-1 alpha-2 country code, upper case.
+        data_tests: [not_null]
+      - name: company_size
+        description: Employee-count band entered at signup.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["1-10", "11-50", "51-200", "201-1000", "1000+"]
+
+  - name: stg_trials
+    description: One row per 14-day free trial.
+    columns:
+      - name: trial_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: signup_id
+        description: The signup that started the trial; a signup has at most one trial.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_signups')
+                field: signup_id
+      - name: trial_started_at
+        description: Trial start timestamp (UTC).
+        data_tests: [not_null]
+      - name: trial_ends_at
+        description: Scheduled trial end; can be later than the last day of data.
+        data_tests: [not_null]
+
+  - name: stg_customers
+    description: One row per customer, created when a trial converts to a paid subscription.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: signup_id
+        description: The signup the customer came from. Every customer had a trial.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_trials')
+                field: signup_id
+      - name: converted_at
+        description: Time of the first successful payment, i.e. when the trial converted.
+        data_tests: [not_null]
+
+  - name: stg_subscription_events
+    description: >
+      Subscription changes. Each non-cancel event carries the complete new state (price and
+      seats). Plan and seat changes are requested during a billing period (occurred_at) and take
+      effect at the next renewal (effective_date).
+    data_tests:
+      - expression_is_true:
+          arguments:
+            expression: "(event_type = 'cancel') = (plan_price_id is null)"
+      - expression_is_true:
+          arguments:
+            expression: "(event_type = 'cancel') = (cancel_reason is not null)"
+      - expression_is_true:
+          arguments:
+            expression: "cast(occurred_at as date) <= effective_date"
+    columns:
+      - name: event_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Customer the event belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: event_type
+        description: >
+          new = first subscription; upgrade = higher tier or more seats; downgrade = lower tier
+          or fewer seats; cancel = subscription ends; reactivate = a former customer returns.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [new, upgrade, downgrade, cancel, reactivate]
+      - name: occurred_at
+        description: When the change was requested or recorded.
+        data_tests: [not_null]
+      - name: effective_date
+        description: When the change takes effect. All metrics use this date.
+        data_tests: [not_null]
+      - name: plan_price_id
+        description: Price the subscription is billed at from effective_date; null for cancels.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_plans')
+                field: plan_price_id
+      - name: seats
+        description: Number of seats from effective_date; null for cancels.
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: "seats > 0"
+      - name: cancel_reason
+        description: voluntary (customer cancelled) or payment_failed (dunning exhausted).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [voluntary, payment_failed]
+
+  - name: stg_invoices
+    description: One invoice per billing period, issued on the period start date.
+    data_tests:
+      - expression_is_true:
+          arguments:
+            expression: "period_end > period_start"
+    columns:
+      - name: invoice_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Billed customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: invoice_date
+        description: Issue date; equal to period_start.
+        data_tests: [not_null]
+      - name: period_start
+        description: First day of the billing period.
+        data_tests: [not_null]
+      - name: period_end
+        description: Day after the last day of the billing period (exclusive).
+        data_tests: [not_null]
+      - name: plan_price_id
+        description: Price the period is billed at.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_plans')
+                field: plan_price_id
+      - name: seats
+        description: Seats billed.
+        data_tests: [not_null]
+      - name: amount_due_usd
+        description: Unit price x seats for the billing interval. No proration or discounts.
+        data_tests: [not_null]
+      - name: invoice_status
+        description: >
+          paid; open (payment retries still pending when the data ends); uncollectible (every
+          retry failed, which cancels the subscription).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid, open, uncollectible]
+
+  - name: stg_payments
+    description: >
+      One row per charge attempt, deduplicated: redelivered webhooks are dropped by keeping the
+      first received row per payment_id.
+    columns:
+      - name: payment_id
+        description: Primary key (unique only after deduplication).
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        description: Invoice being charged.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_invoices')
+                field: invoice_id
+      - name: attempt_number
+        description: 1 for the first charge, 2-4 for retries 3, 7 and 14 days after the invoice.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: attempted_at
+        description: Time of the charge attempt (UTC).
+        data_tests: [not_null]
+      - name: amount_usd
+        description: Amount charged; equal to the invoice amount.
+        data_tests: [not_null]
+      - name: payment_status
+        description: Outcome of the attempt.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [succeeded, failed]
+      - name: failure_code
+        description: Decline reason for failed attempts; null when the attempt succeeded.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [card_declined, insufficient_funds, expired_card]
+      - name: received_at
+        description: When the webhook reached the warehouse; used to keep the first delivery.
+        data_tests: [not_null]
