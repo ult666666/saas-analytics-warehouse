@@ -1,0 +1,148 @@
+version: 2
+
+models:
+  - name: rpt_mrr_bridge
+    description: >
+      Company-level monthly MRR bridge. Movement amounts are signed, so for every month
+      starting_mrr_usd + new + expansion + reactivation + contraction + churned = ending_mrr_usd
+      (enforced by assert_mrr_bridge_reconciles).
+    columns:
+      - name: month_start
+        description: Primary key; first day of the month.
+        data_tests: [unique, not_null]
+      - name: starting_mrr_usd
+        description: MRR at the end of the previous month.
+      - name: new_mrr_usd
+        description: MRR from customers in their first month with MRR.
+      - name: expansion_mrr_usd
+        description: MRR increases from existing customers (more seats or a higher tier).
+      - name: reactivation_mrr_usd
+        description: MRR from former customers who came back.
+      - name: contraction_mrr_usd
+        description: MRR decreases from customers who stay (negative).
+      - name: churned_mrr_usd
+        description: MRR lost from customers whose MRR went to zero (negative).
+      - name: involuntary_churned_mrr_usd
+        description: Part of churned_mrr_usd caused by failed payments (negative). Not additive.
+      - name: net_new_mrr_usd
+        description: Sum of the five movements; equals ending minus starting MRR.
+      - name: ending_mrr_usd
+        description: Sum of customer MRR at the end of the month.
+      - name: starting_customers
+        description: Customers with MRR at the end of the previous month.
+      - name: new_customers
+        description: Customers with a new movement.
+      - name: reactivated_customers
+        description: Customers with a reactivation movement.
+      - name: churned_customers
+        description: Customers with a churn movement.
+      - name: ending_customers
+        description: Customers with MRR at the end of the month.
+      - name: mrr_growth_rate
+        description: (ending - starting) / starting MRR. Null when starting MRR is zero.
+      - name: logo_churn_rate
+        description: churned_customers / starting_customers.
+      - name: gross_mrr_churn_rate
+        description: -(contraction + churned) / starting MRR.
+      - name: net_mrr_churn_rate
+        description: >
+          -(contraction + churned + expansion) / starting MRR. Negative means expansion
+          outweighed losses ("negative net churn").
+      - name: quick_ratio
+        description: (new + expansion + reactivation) / -(contraction + churned).
+
+  - name: rpt_cohort_retention
+    description: >
+      Retention by monthly cohort (first month with MRR) and months since that month. Logo
+      retention counts customers with MRR; net revenue retention compares the cohort's MRR with
+      its month-0 MRR, so expansion can push it above 100%.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [cohort_month, months_since_cohort_start]
+    columns:
+      - name: cohort_month
+        description: First month with MRR of the customers in the cohort.
+        data_tests: [not_null]
+      - name: months_since_cohort_start
+        description: 0 for the cohort month itself.
+        data_tests: [not_null]
+      - name: cohort_customers
+        description: Customers in the cohort.
+      - name: active_customers
+        description: Cohort customers with MRR at the end of this month.
+      - name: logo_retention_rate
+        description: active_customers / cohort_customers; never above 1.
+      - name: cohort_starting_mrr_usd
+        description: Cohort MRR at the end of month 0.
+      - name: mrr_usd
+        description: Cohort MRR at the end of this month, including reactivated customers.
+      - name: net_revenue_retention_rate
+        description: mrr_usd / cohort_starting_mrr_usd.
+
+  - name: rpt_unit_economics
+    description: >
+      CAC, ARPA, LTV and CAC payback per acquisition channel over the trailing
+      `unit_economics_lookback_months` (default 12) months, plus a blended all_channels row
+      (do not sum it with the channel rows). Gross margin is the `gross_margin_pct` variable.
+    columns:
+      - name: channel
+        description: Acquisition channel, or all_channels for the blended row.
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, content, partner, organic, all_channels]
+      - name: marketing_spend_usd
+        description: Spend in the window.
+      - name: new_customers
+        description: Customers whose first MRR month falls in the window.
+      - name: cac_usd
+        description: marketing_spend_usd / new_customers; null for organic (no spend).
+      - name: arpa_usd
+        description: Average MRR per active customer-month in the window.
+      - name: gross_margin_pct
+        description: Assumed gross margin (project variable).
+      - name: monthly_logo_churn_rate
+        description: >
+          Customer-months that churned / customer-months that started the month with MRR,
+          pooled over the window.
+      - name: expected_lifetime_months
+        description: 1 / monthly_logo_churn_rate (constant-churn assumption).
+      - name: ltv_usd
+        description: arpa_usd x gross_margin_pct / monthly_logo_churn_rate (undiscounted).
+      - name: cac_payback_months
+        description: cac_usd / (arpa_usd x gross_margin_pct).
+      - name: ltv_to_cac_ratio
+        description: ltv_usd / cac_usd.
+
+  - name: rpt_funnel
+    description: Signup -> trial -> paid conversion by signup month and acquisition channel.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [signup_month, channel]
+    columns:
+      - name: signup_month
+        description: Month of signup (the funnel cohort).
+        data_tests: [not_null]
+      - name: channel
+        description: Acquisition channel.
+        data_tests: [not_null]
+      - name: signups
+        description: Signups in the cohort.
+      - name: trials
+        description: Signups that started a trial.
+      - name: paid_customers
+        description: Signups that converted to a paid subscription (by the end of data).
+      - name: signup_to_trial_rate
+        description: trials / signups.
+      - name: trial_to_paid_rate
+        description: paid_customers / trials.
+      - name: signup_to_paid_rate
+        description: paid_customers / signups.
+      - name: is_complete_cohort
+        description: >
+          True when at least `funnel_maturity_days` (30) days have passed since the end of the
+          signup month, so every trial in the cohort had time to finish.

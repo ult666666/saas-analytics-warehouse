@@ -1,0 +1,19 @@
+version: 2
+
+data_tests:
+  - name: assert_mrr_bridge_reconciles
+    description: Starting MRR plus movements equals ending MRR in every month.
+  - name: assert_mrr_movements_exclusive_and_exhaustive
+    description: Every MRR change has exactly one movement, matching exactly one definition.
+  - name: assert_no_overlapping_subscription_periods
+    description: A customer's subscription periods never overlap.
+  - name: assert_logo_retention_at_most_100_pct
+    description: Logo retention never exceeds 100% and is exactly 100% in month 0.
+  - name: assert_no_negative_mrr
+    description: MRR is never negative at any grain.
+  - name: assert_paid_invoices_have_one_successful_payment
+    description: Paid invoices have one successful payment; others have none.
+  - name: assert_mrr_matches_billing
+    description: Every active customer-month is covered by an invoice whose monthly amount equals MRR.
+  - name: assert_funnel_stages_only_narrow
+    description: Trials never exceed signups and paid customers never exceed trials.

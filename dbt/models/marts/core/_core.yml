@@ -1,0 +1,230 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: Calendar dimension, one row per day of data.
+    columns:
+      - name: date_day
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: month_start
+        description: First day of the month.
+      - name: month_end
+        description: Last day of the month.
+      - name: quarter_start
+        description: First day of the quarter.
+      - name: year_number
+        description: Calendar year.
+      - name: quarter_number
+        description: Calendar quarter, 1-4.
+      - name: month_number
+        description: Calendar month, 1-12.
+      - name: month_name
+        description: Month name in English.
+      - name: iso_day_of_week
+        description: ISO day of week, 1 = Monday ... 7 = Sunday.
+      - name: day_name
+        description: Day name in English.
+      - name: is_weekend
+        description: True on Saturdays and Sundays.
+      - name: is_month_end
+        description: True on the last day of a month (the day MRR is measured).
+
+  - name: dim_plans
+    description: >
+      Plan price dimension, one row per plan x billing interval x price version. Version 2
+      prices replaced version 1 for new subscriptions and plan changes at the list-price change.
+    columns:
+      - name: plan_price_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: plan_code
+        description: starter, growth or enterprise.
+      - name: plan_name
+        description: Display name.
+      - name: plan_tier
+        description: 1-3, higher is more expensive.
+      - name: billing_interval
+        description: month or year.
+      - name: unit_amount_usd
+        description: List price per seat per billing interval.
+      - name: mrr_per_seat_usd
+        description: Price per seat normalised to one month (annual price / 12).
+        data_tests: [not_null]
+      - name: currency
+        description: Always USD.
+      - name: valid_from
+        description: First day the price is offered.
+      - name: valid_to
+        description: Day the next version starts (exclusive); null for current prices.
+      - name: is_current_price
+        description: True for prices offered on the last day of data.
+
+  - name: dim_customers
+    description: One row per customer with acquisition attributes and lifetime summary.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        data_tests: [unique, not_null]
+      - name: signup_id
+        description: Signup the customer came from.
+        data_tests: [unique, not_null]
+      - name: acquisition_channel
+        description: Channel of the original signup (first touch).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [paid_search, paid_social, content, partner, organic]
+      - name: utm_source
+        description: Cleaned marketing source of the signup.
+      - name: country_code
+        description: Country of the signup.
+      - name: company_size
+        description: Employee-count band.
+      - name: signup_date
+        description: Date of the signup.
+      - name: trial_started_at
+        description: Start of the trial that converted.
+      - name: converted_at
+        description: Time of the first payment.
+      - name: cohort_month
+        description: First month with month-end MRR above zero; the customer's retention cohort.
+        data_tests: [not_null]
+      - name: first_plan_code
+        description: Plan in the cohort month.
+      - name: first_billing_interval
+        description: Billing interval in the cohort month.
+      - name: first_mrr_usd
+        description: MRR at the end of the cohort month.
+      - name: current_plan_code
+        description: Plan at the end of the last month of data; null when not active.
+      - name: current_mrr_usd
+        description: MRR at the end of the last month of data (0 when churned).
+      - name: is_active
+        description: True when current_mrr_usd is above zero.
+      - name: active_months
+        description: Number of months with month-end MRR above zero.
+      - name: churn_count
+        description: Number of times the customer churned (MRR went from positive to zero).
+      - name: lifetime_paid_usd
+        description: Cash collected from successful payments (not MRR).
+
+  - name: fct_mrr
+    description: >
+      Monthly recurring revenue per customer per month, measured on the last day of the month.
+      Covers every month from the customer's first subscription month to the last month of
+      data, including zero-MRR months after churn, so consecutive rows are consecutive months.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [customer_id, month_start]
+    columns:
+      - name: customer_id
+        description: Customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: month_start
+        description: First day of the month.
+        data_tests: [not_null]
+      - name: month_end
+        description: Last day of the month; the snapshot day.
+      - name: cohort_month
+        description: The customer's first month with MRR above zero.
+        data_tests: [not_null]
+      - name: months_since_cohort_start
+        description: Whole months between cohort_month and month_start.
+      - name: plan_price_id
+        description: Price in force at month end; null when the customer has no subscription.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_plans')
+                field: plan_price_id
+      - name: plan_code
+        description: Plan in force at month end.
+      - name: billing_interval
+        description: Billing interval in force at month end.
+      - name: seats
+        description: Seats in force at month end.
+      - name: mrr_usd
+        description: MRR at month end (0 without an active subscription).
+        data_tests: [not_null]
+      - name: previous_mrr_usd
+        description: MRR at the end of the previous month (0 in the first month).
+        data_tests: [not_null]
+      - name: mrr_change_usd
+        description: mrr_usd - previous_mrr_usd.
+      - name: is_active
+        description: True when mrr_usd is above zero.
+
+  - name: fct_mrr_movements
+    description: >
+      One row per customer per month in which month-end MRR changed, classified as exactly one
+      of new, expansion, contraction, churn or reactivation. Amounts are signed: contraction
+      and churn are negative.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [customer_id, month_start]
+    columns:
+      - name: customer_id
+        description: Customer.
+        data_tests: [not_null]
+      - name: month_start
+        description: Month of the movement.
+        data_tests: [not_null]
+      - name: movement_type
+        description: >
+          new = first month with MRR; reactivation = MRR returns after a zero month; expansion
+          = MRR increases; contraction = MRR decreases but stays above zero; churn = MRR drops
+          to zero.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [new, expansion, contraction, churn, reactivation]
+      - name: previous_mrr_usd
+        description: MRR at the end of the previous month.
+      - name: mrr_usd
+        description: MRR at the end of this month.
+      - name: mrr_change_usd
+        description: Signed movement amount (mrr_usd - previous_mrr_usd).
+        data_tests: [not_null]
+      - name: churn_reason
+        description: For churn rows, the reason on the cancel event (voluntary or payment_failed).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [voluntary, payment_failed]
+
+unit_tests:
+  - name: mrr_movements_are_classified_by_month_end_change
+    description: >
+      One customer walks through every movement type, including an unchanged month (no row)
+      and a zero-MRR month between churn and reactivation.
+    model: fct_mrr_movements
+    given:
+      - input: ref('fct_mrr')
+        rows:
+          - {customer_id: c1, month_start: "2024-01-01", cohort_month: "2024-01-01", previous_mrr_usd: 0, mrr_usd: 100, mrr_change_usd: 100}
+          - {customer_id: c1, month_start: "2024-02-01", cohort_month: "2024-01-01", previous_mrr_usd: 100, mrr_usd: 150, mrr_change_usd: 50}
+          - {customer_id: c1, month_start: "2024-03-01", cohort_month: "2024-01-01", previous_mrr_usd: 150, mrr_usd: 150, mrr_change_usd: 0}
+          - {customer_id: c1, month_start: "2024-04-01", cohort_month: "2024-01-01", previous_mrr_usd: 150, mrr_usd: 120, mrr_change_usd: -30}
+          - {customer_id: c1, month_start: "2024-05-01", cohort_month: "2024-01-01", previous_mrr_usd: 120, mrr_usd: 0, mrr_change_usd: -120}
+          - {customer_id: c1, month_start: "2024-06-01", cohort_month: "2024-01-01", previous_mrr_usd: 0, mrr_usd: 0, mrr_change_usd: 0}
+          - {customer_id: c1, month_start: "2024-07-01", cohort_month: "2024-01-01", previous_mrr_usd: 0, mrr_usd: 90, mrr_change_usd: 90}
+      - input: ref('stg_subscription_events')
+        rows:
+          - {customer_id: c1, event_type: cancel, occurred_at: "2024-05-12 10:00:00", effective_date: "2024-05-12", cancel_reason: payment_failed}
+    expect:
+      rows:
+        - {customer_id: c1, month_start: "2024-01-01", movement_type: new, mrr_change_usd: 100, churn_reason: null}
+        - {customer_id: c1, month_start: "2024-02-01", movement_type: expansion, mrr_change_usd: 50, churn_reason: null}
+        - {customer_id: c1, month_start: "2024-04-01", movement_type: contraction, mrr_change_usd: -30, churn_reason: null}
+        - {customer_id: c1, month_start: "2024-05-01", movement_type: churn, mrr_change_usd: -120, churn_reason: payment_failed}
+        - {customer_id: c1, month_start: "2024-07-01", movement_type: reactivation, mrr_change_usd: 90, churn_reason: null}
