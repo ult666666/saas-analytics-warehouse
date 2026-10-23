@@ -21,4 +21,4 @@ select
     last_day(calendar_months.month_start) as month_end
 from customer_first_months
 inner join calendar_months
-    on calendar_months.month_start >= customer_first_months.first_month
+    on customer_first_months.first_month <= calendar_months.month_start

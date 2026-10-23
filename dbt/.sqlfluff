@@ -1,0 +1,33 @@
+[sqlfluff]
+dialect = duckdb
+templater = jinja
+max_line_length = 100
+# ST06 wants simple columns before calculated ones; models here order columns by meaning
+# (keys, timestamps, attributes, measures) instead.
+exclude_rules = ST06
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+load_macros_from_path = macros
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4
+# WHERE/ON conditions may start on the keyword's line, with "and"/"or" lines aligned under it.
+implicit_indents = allow
+indented_on_contents = False
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower

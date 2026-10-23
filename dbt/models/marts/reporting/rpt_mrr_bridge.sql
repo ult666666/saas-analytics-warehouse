@@ -81,8 +81,11 @@ select
     contraction_mrr_usd,
     churned_mrr_usd,
     involuntary_churned_mrr_usd,
-    new_mrr_usd + expansion_mrr_usd + reactivation_mrr_usd + contraction_mrr_usd
-        + churned_mrr_usd as net_new_mrr_usd,
+    new_mrr_usd
+    + expansion_mrr_usd
+    + reactivation_mrr_usd
+    + contraction_mrr_usd
+    + churned_mrr_usd as net_new_mrr_usd,
     ending_mrr_usd,
     starting_customers,
     new_customers,

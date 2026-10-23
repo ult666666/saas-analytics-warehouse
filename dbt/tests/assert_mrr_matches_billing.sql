@@ -8,7 +8,11 @@
 -- annual plans), which can overlap the invoice of a later reactivation.
 
 with active_months as (
-    select customer_id, month_start, month_end, mrr_usd
+    select
+        customer_id,
+        month_start,
+        month_end,
+        mrr_usd
     from {{ ref('fct_mrr') }}
     where is_active
 ),
@@ -28,7 +32,7 @@ invoices as (
         on invoices.plan_price_id = prices.plan_price_id
 ),
 
-invoice_in_force as (
+covering_invoices as (
     select
         active_months.customer_id,
         active_months.month_start,
@@ -36,20 +40,30 @@ invoice_in_force as (
         invoices.invoice_id,
         invoices.monthly_invoiced_usd,
         invoices.amount_due_usd,
-        invoices.list_amount_usd
+        invoices.list_amount_usd,
+        row_number() over (
+            partition by active_months.customer_id, active_months.month_start
+            order by invoices.period_start desc
+        ) as recency_rank
     from active_months
     left join invoices
         on active_months.customer_id = invoices.customer_id
-        and invoices.period_start <= active_months.month_end
-        and invoices.period_end > active_months.month_end
-    qualify row_number() over (
-        partition by active_months.customer_id, active_months.month_start
-        order by invoices.period_start desc
-    ) = 1
+        and active_months.month_end >= invoices.period_start
+        and active_months.month_end < invoices.period_end
 )
 
-select *
-from invoice_in_force
-where invoice_id is null
-    or monthly_invoiced_usd != mrr_usd
-    or amount_due_usd != list_amount_usd
+select
+    customer_id,
+    month_start,
+    mrr_usd,
+    invoice_id,
+    monthly_invoiced_usd,
+    amount_due_usd,
+    list_amount_usd
+from covering_invoices
+where recency_rank = 1
+    and (
+        invoice_id is null
+        or monthly_invoiced_usd != mrr_usd
+        or amount_due_usd != list_amount_usd
+    )

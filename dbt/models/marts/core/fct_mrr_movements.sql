@@ -5,18 +5,27 @@ with mrr as (
     select * from {{ ref('fct_mrr') }}
 ),
 
-cancellations as (
-    -- The reason behind a churn is the cancel event that took effect during the month.
+cancel_events as (
     select
         customer_id,
         cast(date_trunc('month', effective_date) as date) as month_start,
-        cancel_reason
+        cancel_reason,
+        row_number() over (
+            partition by customer_id, date_trunc('month', effective_date)
+            order by effective_date desc, occurred_at desc
+        ) as recency_rank
     from {{ ref('stg_subscription_events') }}
     where event_type = 'cancel'
-    qualify row_number() over (
-        partition by customer_id, date_trunc('month', effective_date)
-        order by effective_date desc, occurred_at desc
-    ) = 1
+),
+
+cancellations as (
+    -- The reason behind a churn is the last cancel event that took effect during the month.
+    select
+        customer_id,
+        month_start,
+        cancel_reason
+    from cancel_events
+    where recency_rank = 1
 ),
 
 changes as (

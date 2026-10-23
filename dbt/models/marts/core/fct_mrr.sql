@@ -24,8 +24,8 @@ month_end_snapshot as (
     from customer_months
     left join periods
         on customer_months.customer_id = periods.customer_id
-        and periods.valid_from <= customer_months.month_end
-        and (periods.valid_to is null or periods.valid_to > customer_months.month_end)
+        and customer_months.month_end >= periods.valid_from
+        and (periods.valid_to is null or customer_months.month_end < periods.valid_to)
 ),
 
 with_history as (

@@ -35,10 +35,11 @@ docs: ## Generate the static dbt docs page (dbt/target/static_index.html)
 
 all: data build report docs ## Run the whole pipeline: data, build, report, docs
 
-lint: ## Ruff lint, ruff format check and mypy
+lint: ## Ruff lint, ruff format check, mypy and sqlfluff
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy
+	cd dbt && uv run sqlfluff lint models tests
 
 test: ## Python tests with coverage
 	uv run pytest

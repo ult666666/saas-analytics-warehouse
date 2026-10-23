@@ -8,7 +8,7 @@
 with window_bounds as (
     select
         cast(
-            date_trunc('month', max(date_day)) - interval {{ lookback_months - 1 }} month as date
+            date_trunc('month', max(date_day)) - to_months({{ lookback_months }} - 1) as date
         ) as first_month,
         cast(date_trunc('month', max(date_day)) as date) as last_month,
         max(date_day) as last_date
@@ -51,7 +51,7 @@ channel_totals as (
     from channels
     left join spend
         on channels.channel = spend.channel
-    group by rollup (channels.channel)
+    group by rollup(channels.channel)
 ),
 
 channel_activity as (
@@ -63,7 +63,7 @@ channel_activity as (
         count(*) filter (where previous_mrr_usd > 0) as customer_months_at_risk,
         count(*) filter (where previous_mrr_usd > 0 and mrr_usd = 0) as churned_customer_months
     from customer_months
-    group by rollup (channel)
+    group by rollup(channel)
 ),
 
 metrics as (
@@ -74,13 +74,12 @@ metrics as (
         -- No spend means no CAC: organic customers are not free, their cost is unmeasured.
         case
             when channel_totals.marketing_spend_usd > 0
-                then channel_totals.marketing_spend_usd
-                / nullif(channel_activity.new_customers, 0)
+                then channel_totals.marketing_spend_usd / nullif(channel_activity.new_customers, 0)
         end as cac_usd,
-        channel_activity.active_mrr_usd / nullif(channel_activity.active_customer_months, 0)
-            as arpa_usd,
+        channel_activity.active_mrr_usd
+        / nullif(channel_activity.active_customer_months, 0) as arpa_usd,
         channel_activity.churned_customer_months
-            / nullif(channel_activity.customer_months_at_risk, 0) as monthly_logo_churn_rate
+        / nullif(channel_activity.customer_months_at_risk, 0) as monthly_logo_churn_rate
     from channel_totals
     left join channel_activity
         on channel_totals.channel = channel_activity.channel
