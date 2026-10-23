@@ -19,6 +19,9 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/ult666666/saas-analytics-warehouse"
 
+[project.scripts]
+saasgen = "saasgen.cli:main"
+
 [dependency-groups]
 dev = [
     "mypy>=2.4",
