@@ -191,8 +191,8 @@ make data SCALE=0.25 MONTHS=24   # a smaller dataset; SEED=7 for a different one
   generates a smaller dataset, runs `dbt build`, the report, pytest and the linters (ruff, mypy,
   sqlfluff with the Jinja templater).
 - [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes the static dbt docs to
-  <https://ult666666.github.io/saas-analytics-warehouse/>. It needs GitHub Pages enabled with
-  "GitHub Actions" as the source, and has not run yet because the repository is not published.
+  <https://ult666666.github.io/saas-analytics-warehouse/> on every push to `main`, with GitHub
+  Pages set to use "GitHub Actions" as its source.
 
 ```text
 src/saasgen/       data generator (config.py holds every simulation parameter)
