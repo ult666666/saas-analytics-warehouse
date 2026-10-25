@@ -347,3 +347,39 @@ def test_missing_database_and_bad_month_are_controlled_usage_errors(
         assert error.value.code == 2
         assert "Traceback" not in capsys.readouterr().err
     assert not missing.exists() and not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    "table,column,type_sql,conversion",
+    [
+        ("dim_customers", "acquisition_channel", "varchar[]", "[acquisition_channel]"),
+        (
+            "dim_customers",
+            "acquisition_channel",
+            "struct(value varchar)",
+            "{'value': acquisition_channel}",
+        ),
+        ("fct_mrr_movements", "churn_reason", "varchar[]", "[churn_reason]"),
+        ("fct_mrr_movements", "churn_reason", "struct(value varchar)", "{'value': churn_reason}"),
+    ],
+)
+def test_collection_shaped_category_drift_is_a_controlled_data_error(
+    churn_db: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    table: str,
+    column: str,
+    type_sql: str,
+    conversion: str,
+) -> None:
+    # Actual LIST/STRUCT values used to escape the CLI as an unhashable TypeError.
+    with duckdb.connect(str(churn_db)) as connection:
+        connection.execute(
+            f"alter table marts.{table} alter {column} type {type_sql} using {conversion}"
+        )
+    output = tmp_path / "schema-drift"
+    with pytest.raises(SystemExit) as error:
+        main(["--database", str(churn_db), "--month", "2024-03", "--output-dir", str(output)])
+    assert error.value.code == 2
+    assert "error:" in capsys.readouterr().err
+    assert not output.exists()

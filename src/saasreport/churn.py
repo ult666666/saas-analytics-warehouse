@@ -100,9 +100,9 @@ def _load(connection: duckdb.DuckDBPyConnection, month: date) -> _Investigation:
         if customer_id in seen:
             raise ValueError("duplicate churn customer or customer-dimension join")
         seen.add(customer_id)
-        if channel not in CHANNELS:
+        if not isinstance(channel, str) or channel not in CHANNELS:
             raise ValueError("churn customer must have one supported acquisition channel")
-        if reason not in REASONS:
+        if not isinstance(reason, str) or reason not in REASONS:
             raise ValueError("churn reason must be voluntary or payment_failed")
         prior_cents = _cents(previous, "previous churn MRR")
         current_cents = _cents(current, "current churn MRR")
