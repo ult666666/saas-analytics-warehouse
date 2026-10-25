@@ -117,6 +117,21 @@ The warehouse is a single DuckDB file, `data/warehouse.duckdb`, with schemas `st
 `intermediate`, `marts` and `seeds`. `make docs` writes a self-contained dbt docs page to
 `dbt/target/static_index.html`. Run `make help` to see every target.
 
+### Investigate a month's churn
+
+Trace the bridge to fictional customer records, payment-failure losses and channel/reason totals:
+
+```bash
+uv run python -m saasreport.churn --month 2024-12 --output-dir ../tallyloom-churn-2024-12
+```
+
+The read-only consumer validates exact customer-count, total-loss and payment-failure-subset
+reconciliation before writing three CSVs and a Markdown investigation to a **new** directory.
+It retains historical churn for customers who reactivated later and distinguishes a valid
+zero-churn month from an absent month. See the [complete workflow and limits](docs/CHURN_INVESTIGATION.md)
+and [real DuckDB regression tests](tests/test_churn.py). The selected month must exist in your build;
+this example is covered by both the default build and the 24-month CI fixture.
+
 ## Key outputs
 
 Synthetic data, December 2025 snapshot, from [`reports/report.md`](reports/report.md): ending MRR

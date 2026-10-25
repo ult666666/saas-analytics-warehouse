@@ -42,6 +42,9 @@ jobs:
       - name: Build the report from the marts
         run: uv run saasreport --database data/warehouse.duckdb --output-dir "$RUNNER_TEMP/reports"
 
+      - name: Reconcile a historical churn investigation to the built marts
+        run: uv run python -m saasreport.churn --month 2024-12 --output-dir "$RUNNER_TEMP/churn-2024-12"
+
       - name: Python tests with coverage
         run: make test
 
