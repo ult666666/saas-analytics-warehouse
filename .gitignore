@@ -30,3 +30,6 @@ logs/
 .idea/
 .vscode/
 *.swp
+
+# Local AI planning notes
+docs/superpowers/

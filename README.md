@@ -122,7 +122,7 @@ The warehouse is a single DuckDB file, `data/warehouse.duckdb`, with schemas `st
 Trace the bridge to fictional customer records, payment-failure losses and channel/reason totals:
 
 ```bash
-uv run python -m saasreport.churn --month 2024-12 --output-dir ../tallyloom-churn-2024-12
+uv run python -m saasreport.churn --month 2024-12 --output-dir build/churn-2024-12
 ```
 
 The read-only consumer validates exact customer-count, total-loss and payment-failure-subset
@@ -179,9 +179,9 @@ values at every layer. Singular tests enforce the business invariants:
 
 The unit tests feed hand-written rows through `int_subscription_periods` and `fct_mrr_movements`
 to pin down period boundaries, annual-to-monthly normalisation and every movement type. On the
-Python side, 50 pytest tests cover generator determinism, referential integrity, date ordering,
-billing consistency and calibration (generated rates against configured parameters), plus the
-report, with 99% line and branch coverage.
+Python side, pytest covers generator determinism, referential integrity, date ordering, billing
+consistency and calibration (generated rates against configured parameters), plus the report and
+the churn investigation. CI reports line and branch coverage on every run and fails below 85%.
 
 ## Metric definitions
 

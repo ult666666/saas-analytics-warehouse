@@ -17,7 +17,7 @@ make data build MONTHS=24 SCALE=0.25
 uv run python -m saasreport.churn \
   --database data/warehouse.duckdb \
   --month 2024-12 \
-  --output-dir ../tallyloom-churn-2024-12
+  --output-dir build/churn-2024-12
 ```
 
 Choose a **new** output directory on each run; even an existing empty directory is refused.
