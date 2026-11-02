@@ -1,7 +1,7 @@
 # Design notes
 
-How the warehouse is put together and why. Each decision lists the alternative that was not
-chosen, because the trade-off is usually what an interviewer asks about.
+How the warehouse is put together and why. Each decision names the alternative that was not
+chosen and what the choice costs.
 
 ## Pipeline at a glance
 
@@ -24,6 +24,103 @@ saasreport (Python)      read-only DuckDB queries -> reports/figures/*.png + rep
 Everything runs locally from one command (`make all`), in about 8 seconds on a laptop once the
 dependencies are installed. CI runs the same steps on a smaller dataset, plus the load
 simulation (decision 16).
+
+### Model lineage
+
+Taken from dbt's manifest, with sources on the left and report-ready marts on the right:
+
+```mermaid
+flowchart LR
+    subgraph raw["data/raw (CSV)"]
+        raw_files[("8 CSV files<br/>from saasgen")]
+    end
+    subgraph staging["staging"]
+        stg_plans
+        stg_marketing_spend
+        stg_signups
+        stg_trials
+        stg_customers
+        stg_subscription_events
+        stg_invoices
+        stg_payments
+    end
+    seed[("seed:<br/>channel_mapping")]
+    subgraph intermediate["intermediate"]
+        int_date_spine
+        int_signup_funnel
+        int_subscription_periods
+        int_customer_months
+        int_subscription_state
+    end
+    subgraph snapshots["snapshots"]
+        snp_subscription_state
+    end
+    subgraph core["marts: core"]
+        dim_date
+        dim_plans
+        dim_customers
+        fct_mrr
+        fct_mrr_movements
+    end
+    subgraph reporting["marts: reporting"]
+        rpt_mrr_bridge
+        rpt_cohort_retention
+        rpt_unit_economics
+        rpt_funnel
+    end
+    raw_files --> staging
+    stg_marketing_spend --> int_date_spine
+    stg_signups & stg_trials & stg_customers & seed --> int_signup_funnel
+    stg_subscription_events & stg_plans --> int_subscription_periods
+    int_subscription_periods & int_date_spine --> int_customer_months
+    int_subscription_periods & stg_plans & int_date_spine --> int_subscription_state
+    int_subscription_state --> snp_subscription_state
+    int_date_spine --> dim_date
+    stg_plans --> dim_plans
+    int_customer_months & int_subscription_periods --> fct_mrr
+    fct_mrr & stg_subscription_events --> fct_mrr_movements
+    int_signup_funnel & fct_mrr & stg_invoices & stg_payments --> dim_customers
+    fct_mrr & fct_mrr_movements & dim_date --> rpt_mrr_bridge
+    fct_mrr --> rpt_cohort_retention
+    fct_mrr & dim_customers & dim_date & stg_marketing_spend & seed --> rpt_unit_economics
+    int_signup_funnel & dim_date --> rpt_funnel
+```
+
+### A run of `make all`
+
+The output of `make all` with the default seed, abridged (timings vary by machine):
+
+```text
+Generated synthetic Tallyloom data in 0.7s (seed=42, scale=1, 2023-01-01 to 2025-12-31)
+  plans                       12 rows
+  marketing_spend          4,384 rows
+  signups                 24,694 rows
+  trials                  17,193 rows
+  customers                3,048 rows
+  subscription_events      6,531 rows
+  invoices                26,272 rows
+  payments                28,914 rows
+...
+Finished running 6 incremental models, 1 seed, 1 snapshot, 11 table models, 165 data tests, 3 unit tests, 5 view models in 0 hours 0 minutes and 7.04 seconds (7.04s).
+Done. PASS=192 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=192
+wrote reports/figures/mrr_trend.png
+...
+wrote reports/report.md
+```
+
+### Repository layout
+
+```text
+src/saasgen/       data generator (config.py holds every simulation parameter), daily batches
+                   and the incremental load check (backfill.py)
+src/saasreport/    charts and report.md from the marts
+dbt/models/        staging/ -> intermediate/ -> marts/core/ and marts/reporting/
+dbt/snapshots/     snp_subscription_state (SCD type 2)
+dbt/tests/         singular business-invariant tests and two generic tests
+tests/             pytest suite
+reports/           generated report.md and figures/ (committed)
+docs/              METRICS.md, DESIGN.md
+```
 
 ## Layers and their contracts
 
@@ -229,7 +326,8 @@ a short version (6 months, the last 14 days one at a time) on every push.
 | Load simulation | pytest (`tests/test_backfill.py`) and `make incremental-check` | Landing, the warehouse comparison and the order of steps (with a fake dbt); then, for real, an incremental build that equals a full refresh. |
 | History | dbt singular tests and a unit test | Snapshot windows are contiguous, one current version per customer, current versions equal the current-state model, history agrees with `fct_mrr` at every month end, and the state model's as-of boundary. |
 
-Tests are only useful if they can fail, so each one was checked against a deliberate break:
+Tests are only useful if they can fail, so the main ones were checked by breaking the model on
+purpose:
 
 - Changing one expected value in either unit test makes it fail.
 - Computing `lag()` over a spine with gaps (dropping zero-MRR months before the window function)
@@ -248,6 +346,35 @@ The singular tests restate definitions instead of re-running the model's own SQL
 `assert_mrr_movements_exclusive_and_exhaustive` writes the five movement conditions out again,
 so a bug in the model's `case` expression cannot also hide in the test.
 
+### Data tests and the invariants they enforce
+
+`dbt build` runs 165 data tests and 3 unit tests, and fails if any of them fails. Generic tests
+(`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
+`unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
+values at every layer. Singular tests enforce the business invariants:
+
+| Test | Invariant |
+| --- | --- |
+| `assert_mrr_bridge_reconciles` | Starting MRR + new + expansion + reactivation + contraction + churn = ending MRR in every month, ending MRR equals the sum of customer MRR, and customer counts roll forward the same way. |
+| `assert_mrr_movements_exclusive_and_exhaustive` | Every customer-month whose MRR changed has exactly one movement, and it matches exactly one category definition: the one it is labelled with. |
+| `assert_no_overlapping_subscription_periods` | A customer is never on two subscriptions at once. |
+| `assert_logo_retention_at_most_100_pct` | Logo retention never exceeds 100% and is exactly 100% in month 0. |
+| `assert_no_negative_mrr` | MRR is never negative at any grain. |
+| `assert_mrr_matches_billing` | For every customer-month with MRR, the invoice in force, normalised to a month, equals that MRR. MRR comes from subscription events and invoices from billing, so this cross-checks two systems. |
+| `assert_paid_invoices_have_one_successful_payment` | Paid invoices have exactly one successful charge; open and uncollectible invoices have none. This only holds after staging drops duplicate payment webhooks. |
+| `assert_funnel_stages_only_narrow` | Trials never exceed signups and paid customers never exceed trials. |
+| `assert_snapshot_windows_are_contiguous` | A customer's snapshot versions never overlap and leave no gaps. |
+| `assert_snapshot_has_one_current_version_per_customer` | Exactly one current version per customer. |
+| `assert_snapshot_matches_current_state` | The current versions equal `int_subscription_state`. |
+| `assert_snapshot_history_matches_month_end_mrr` | Every version in force on a month end agrees with `fct_mrr`, which is rebuilt from the full event log. |
+
+The unit tests feed hand-written rows through `int_subscription_periods`, `fct_mrr_movements`
+and `int_subscription_state` to pin down period boundaries, annual-to-monthly normalisation,
+every movement type and the as-of boundary of the current state. On the
+Python side, pytest covers generator determinism, referential integrity, date ordering, billing
+consistency and calibration (generated rates against configured parameters), plus the report and
+the churn investigation. CI reports line and branch coverage on every run and fails below 85%.
+
 ## How the synthetic data is made
 
 - One `numpy.random.Generator` per stage, derived with `SeedSequence(seed).spawn()`, so changing
@@ -262,7 +389,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
   roughly 70% of a cohort still paying after 12 months, a CAC payback of about 6 to 21 months
   depending on channel, and a visible drop at month 12 when annual contracts come up for renewal.
 
-## Questions to be ready for
+## Common questions
 
 - *Why is MRR measured at month end, and what happens to a plan change on the 15th?* The state on
   the last day counts for the whole month; see decision 2.
@@ -287,3 +414,32 @@ so a bug in the model's `case` expression cannot also hide in the test.
   everywhere; `dbt_utils.date_spine` and `case when` aggregates would replace them.
 - *What would you add next?* An incremental `fct_mrr`, proration, multiple subscriptions per
   customer and a semantic layer for metric definitions.
+
+## Limitations and roadmap
+
+- Synthetic data. Behaviour is designed in `src/saasgen/config.py`, not observed, so the
+  numbers show the method, not market benchmarks.
+- Month-end snapshots. MRR is measured on the last day of each month. A customer who cancels
+  and returns within the same calendar month shows no churn or reactivation, and there is no
+  daily MRR.
+- Simplified billing. One subscription per customer; changes take effect at renewal (no
+  proration); no discounts, coupons, taxes, refunds or currency conversion.
+- CAC is media spend only. No salaries or tooling, first-touch attribution and no lag between
+  spend and conversion. Gross margin is an assumed constant (80%) because the data has no cost of
+  revenue. LTV assumes constant churn and is undiscounted.
+- DuckDB-specific SQL. The date spine, `qualify` and `filter` clauses are written for DuckDB,
+  and the schema-naming macro suits a single developer.
+- Late data is bounded by the lookback window. A row more than 7 days older than the newest
+  loaded row is missed by incremental runs until a full refresh, and nothing alerts on it. The
+  marts are still full rebuilds, and because the sources are CSV files read in full, incremental
+  runs are not faster at this size.
+- Snapshot history starts at the first snapshot run and holds only the states a run saw: a
+  late change that was already superseded when it arrived never appears.
+- SQL linting checks templated style, not compiled SQL: sqlfluff uses its Jinja templater
+  with emulated dbt functions, so it is fast and needs no database, but it does not see the SQL
+  dbt actually compiles.
+
+### Roadmap
+
+An incremental `fct_mrr`, multi-subscription and proration support, MetricFlow semantic
+models, and a small dashboard on top of the marts.
