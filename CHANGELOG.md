@@ -16,11 +16,11 @@ All notable changes to this project are documented in this file. The format foll
   of each customer's plan, seats, price, MRR and status, built from the new
   `int_subscription_state` model, with four singular tests and a unit test.
 - `saasgen --daily-batches DIR` writes the same seeded data as daily batches, including
-  invoices that arrive again when their status changes and a seeded 3% of rows arriving one to
-  five days late.
+  invoices that arrive again when their status changes and a seeded 3% of the rows that can be
+  late (all but payments, plans and marketing spend) arriving one to five days late.
 - `python -m saasgen.backfill` (`make incremental-check`): loads the batches day by day, builds
   incrementally with snapshots, runs every test and compares every relation with a full
-  refresh by row hashes. CI runs a short version.
+  refresh row by row. CI runs a short version.
 
 ### Changed
 

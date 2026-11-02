@@ -12,8 +12,9 @@ Usage: ``uv run python -m saasgen.backfill --help`` (``make incremental-check``)
 4. Run every test on the incrementally built warehouse.
 5. Build a second warehouse from the same landing files with ``--full-refresh``.
 6. Compare every model and seed, and the snapshot's current versions, row by row:
-   an order-independent digest of row hashes per relation, and the differing
-   rows when a digest does not match.
+   equal row counts and an empty ``except all`` in both directions (a multiset
+   difference, so order does not matter and duplicates count), with up to three
+   differing rows from each side when they differ.
 """
 
 from __future__ import annotations

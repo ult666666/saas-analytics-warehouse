@@ -76,6 +76,16 @@ def test_the_late_share_matches_the_configured_share(default_batches: DailyBatch
     assert set(delays) == set(range(1, MAX_ARRIVAL_DELAY_DAYS + 1))
 
 
+def test_default_batches_match_the_documented_counts(default_batches: DailyBatches) -> None:
+    # docs/DESIGN.md (decision 16) quotes what `saasgen --daily-batches` prints by default.
+    late = sum(arrival.arrives_on > arrival.known_on for arrival in default_batches.arrivals)
+    assert (len(default_batches.by_day()), len(default_batches.arrivals), late) == (
+        1_096,
+        112_415,
+        2_366,
+    )
+
+
 def test_batches_are_deterministic(small_dataset: Dataset) -> None:
     assert daily_batches(small_dataset) == daily_batches(small_dataset)
     later = daily_batches(small_dataset, late_share=1.0, max_delay_days=2)

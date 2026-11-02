@@ -199,15 +199,20 @@ log). A snapshot is the one stateful object in the warehouse, so `make data` del
 warehouse file: history from one generated dataset means nothing for another.
 
 **16. Incremental correctness is proved by comparison, not assumed.** `saasgen --daily-batches`
-writes the same seeded rows as daily batches: each row on the day it becomes known, an
-invoice once when issued and again when its status changes, and 3% of the other rows one to
-five days late (a separate random stream, so the data itself does not change).
+writes the same seeded rows as daily batches: each row on the day it becomes known and an
+invoice once when issued and again when its status changes. A seeded 3% of the rows that can
+be late (signups, trials, customers, subscription events and invoice versions) arrive one to
+five days late, from a separate random stream, so the data itself does not change; payments,
+plans and marketing spend always arrive on time. With the defaults (seed 42, 36 months, scale
+1), `uv run saasgen --daily-batches data/batches` writes 1,096 batches with 112,415 rows, 2,366
+of them late.
 `python -m saasgen.backfill` loads an initial period at once, then one day at a time,
 running `dbt build` without the data tests after each day (mid-load, a late row can refer to a
 row that has not arrived yet), then every test. It then builds a second warehouse from the
 same files with `--full-refresh` and compares every model and seed, and the snapshot's
-current versions, through an order-independent digest of row hashes, printing the differing
-rows on a mismatch. Floating-point columns are compared rounded to 10 decimal places, because
+current versions, row by row: the row counts must match and an `except all` in each direction
+(a multiset difference, so row order does not matter and duplicates count) must be empty. On a
+mismatch it prints up to three differing rows from each side. Floating-point columns are compared rounded to 10 decimal places, because
 parallel aggregation can change their last bits; everything else must match exactly. CI runs
 a short version (6 months, the last 14 days one at a time) on every push.
 
