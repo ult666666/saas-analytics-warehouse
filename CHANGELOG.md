@@ -24,6 +24,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
+- The README leads with the results and how to rebuild them, then how the warehouse is built,
+  the tests and five limits. The model lineage diagram, a sample `make all` run, the table of
+  invariant tests, the repository layout and the full limitations moved to `docs/DESIGN.md`.
 - Raw invoices have an `updated_at` column (when the status last changed); `stg_invoices`
   keeps the newest version of each invoice. Every other generated value is unchanged, and
   `reports/report.md` is identical.
