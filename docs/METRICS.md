@@ -199,3 +199,20 @@ missing (right-censoring), and the report only uses complete cohorts.
 removed in `stg_payments`. Cash and MRR differ on purpose: an annual customer pays 12 months
 upfront but contributes one twelfth of that to MRR each month, and an invoice in dunning is
 counted in MRR before any cash arrives.
+
+## Subscription state and its history
+
+**Definition.** A customer's subscription state on a day is the paying period in force that
+day (`valid_from <= day < valid_to`): its price (`plan_price_id`, list price per seat
+`unit_amount_usd`), seats and MRR, with status `active`. After the last period ends the state
+is `cancelled` with MRR 0, keeping the last price and seats; a reactivation starts a new
+`active` state. `int_subscription_state` reports the state on the last day of data, and its
+`state_started_at` is when that state took effect.
+
+**History.** `snp_subscription_state` keeps one version per state, valid from
+`dbt_valid_from` (the state's start) up to `dbt_valid_to` (the next state's start; null for
+the current one). The state on a past day is the version with `dbt_valid_from <= day <
+dbt_valid_to`. Month-end MRR read this way equals `fct_mrr` (tested), but only from the first
+snapshot run onwards: before it, the snapshot has no versions, and `fct_mrr` remains the
+source for history derived from events.
+

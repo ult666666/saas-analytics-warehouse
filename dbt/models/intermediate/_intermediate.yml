@@ -117,6 +117,54 @@ models:
       - name: converted_to_paid
         description: True when the signup became a paying customer.
 
+  - name: int_subscription_state
+    description: >
+      One row per customer whose first subscription has started: the subscription state in
+      force on the last day of data (the newest day in int_date_spine). The source of the
+      snp_subscription_state snapshot.
+    columns:
+      - name: customer_id
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: subscription_status
+        description: active while a paying period is in force, cancelled after it ended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['active', 'cancelled']
+      - name: plan_price_id
+        description: Price of the current (or, once cancelled, the last) paying period.
+        data_tests: [not_null]
+      - name: plan_code
+        description: Plan of that period.
+      - name: billing_interval
+        description: month or year.
+      - name: seats
+        description: Seats of that period.
+        data_tests: [not_null]
+      - name: unit_amount_usd
+        description: List price per seat per billing interval of that price.
+        data_tests: [not_null]
+      - name: mrr_usd
+        description: Monthly recurring revenue now; 0 once cancelled.
+        data_tests:
+          - not_null
+          - expression_is_true:
+              arguments:
+                expression: "(subscription_status = 'active') = (mrr_usd > 0)"
+      - name: state_started_at
+        description: >
+          When this state took effect (midnight UTC of the period's start, or of the day it
+          ended for a cancelled subscription). The snapshot's updated_at.
+        data_tests: [not_null]
+
 unit_tests:
   - name: subscription_periods_end_when_the_next_event_takes_effect
     description: >
@@ -139,3 +187,31 @@ unit_tests:
         - {subscription_period_id: e1, customer_id: c1, valid_from: "2024-01-15", valid_to: "2024-03-15", is_open: false, seats: 10, mrr_usd: 290.00}
         - {subscription_period_id: e2, customer_id: c1, valid_from: "2024-03-15", valid_to: "2024-06-15", is_open: false, seats: 12, mrr_usd: 348.00}
         - {subscription_period_id: e4, customer_id: c2, valid_from: "2024-02-01", valid_to: null, is_open: true, seats: 5, mrr_usd: 116.00}
+
+  - name: subscription_state_is_the_period_in_force_on_the_last_day
+    description: >
+      The state is the latest period that had started by the last day of data. A period that
+      ends on that day no longer counts (valid_to is exclusive), so the customer is cancelled
+      from then on with MRR 0; a period that starts later is ignored.
+    model: int_subscription_state
+    given:
+      - input: ref('int_date_spine')
+        rows:
+          - {date_day: 2024-03-30}
+          - {date_day: 2024-03-31}
+      - input: ref('stg_plans')
+        rows:
+          - {plan_price_id: starter_m, unit_amount_usd: 12.00}
+          - {plan_price_id: growth_m, unit_amount_usd: 29.00}
+      - input: ref('int_subscription_periods')
+        rows:
+          - {customer_id: upgraded, valid_from: 2024-01-01, valid_to: 2024-03-01, plan_price_id: starter_m, seats: 2, mrr_usd: 24.00}
+          - {customer_id: upgraded, valid_from: 2024-03-01, valid_to: null, plan_price_id: growth_m, seats: 3, mrr_usd: 87.00}
+          - {customer_id: cancelled_earlier, valid_from: 2024-01-15, valid_to: 2024-03-10, plan_price_id: starter_m, seats: 1, mrr_usd: 12.00}
+          - {customer_id: ends_on_the_last_day, valid_from: 2024-02-01, valid_to: 2024-03-31, plan_price_id: growth_m, seats: 1, mrr_usd: 29.00}
+          - {customer_id: starts_after_the_last_day, valid_from: 2024-04-05, valid_to: null, plan_price_id: growth_m, seats: 4, mrr_usd: 116.00}
+    expect:
+      rows:
+        - {customer_id: upgraded, subscription_status: active, plan_price_id: growth_m, seats: 3, unit_amount_usd: 29.00, mrr_usd: 87.00, state_started_at: 2024-03-01 00:00:00}
+        - {customer_id: cancelled_earlier, subscription_status: cancelled, plan_price_id: starter_m, seats: 1, unit_amount_usd: 12.00, mrr_usd: 0.00, state_started_at: 2024-03-10 00:00:00}
+        - {customer_id: ends_on_the_last_day, subscription_status: cancelled, plan_price_id: growth_m, seats: 1, unit_amount_usd: 29.00, mrr_usd: 0.00, state_started_at: 2024-03-31 00:00:00}

@@ -17,3 +17,11 @@ data_tests:
     description: Every active customer-month is covered by an invoice whose monthly amount equals MRR.
   - name: assert_funnel_stages_only_narrow
     description: Trials never exceed signups and paid customers never exceed trials.
+  - name: assert_snapshot_windows_are_contiguous
+    description: A customer's snapshot versions never overlap, leave no gaps and have positive length.
+  - name: assert_snapshot_has_one_current_version_per_customer
+    description: Every customer in the snapshot has exactly one current version.
+  - name: assert_snapshot_matches_current_state
+    description: The snapshot's current versions equal int_subscription_state.
+  - name: assert_snapshot_history_matches_month_end_mrr
+    description: Every snapshot version in force on a month end agrees with fct_mrr for that month.

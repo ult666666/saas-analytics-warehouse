@@ -24,8 +24,8 @@ reconcile to the cent in every month.
 
 | Part | What it does |
 | --- | --- |
-| [`src/saasgen`](src/saasgen) | Seeded generator for eight raw tables: plans, marketing spend, signups, trials, customers, subscription events, invoices, payments. Deterministic and calibrated (pytest checks the generated rates). |
-| [`dbt/`](dbt) | dbt-core + dbt-duckdb project: 8 staging, 4 intermediate and 9 mart models, 149 data tests and 2 unit tests. No external packages. |
+| [`src/saasgen`](src/saasgen) | Seeded generator for eight raw tables: plans, marketing spend, signups, trials, customers, subscription events, invoices, payments. Deterministic and calibrated (pytest checks the generated rates). It can also write the same rows as daily batches with late arrivals, and `saasgen.backfill` loads them day by day to check the incremental build. |
+| [`dbt/`](dbt) | dbt-core + dbt-duckdb project: 8 staging (6 of them incremental), 5 intermediate and 9 mart models, a snapshot of subscription state, 165 data tests and 3 unit tests. No external packages. |
 | [`src/saasreport`](src/saasreport) | Queries the marts and writes the charts and [`reports/report.md`](reports/report.md). |
 | [`docs/`](docs) | [Metric definitions](docs/METRICS.md) and [design notes](docs/DESIGN.md). |
 
@@ -52,6 +52,10 @@ flowchart LR
         int_signup_funnel
         int_subscription_periods
         int_customer_months
+        int_subscription_state
+    end
+    subgraph snapshots["snapshots"]
+        snp_subscription_state
     end
     subgraph core["marts: core"]
         dim_date
@@ -71,6 +75,8 @@ flowchart LR
     stg_signups & stg_trials & stg_customers & seed --> int_signup_funnel
     stg_subscription_events & stg_plans --> int_subscription_periods
     int_subscription_periods & int_date_spine --> int_customer_months
+    int_subscription_periods & stg_plans & int_date_spine --> int_subscription_state
+    int_subscription_state --> snp_subscription_state
     int_date_spine --> dim_date
     stg_plans --> dim_plans
     int_customer_months & int_subscription_periods --> fct_mrr
@@ -106,15 +112,16 @@ Generated synthetic Tallyloom data in 0.7s (seed=42, scale=1, 2023-01-01 to 2025
   invoices                26,272 rows
   payments                28,914 rows
 ...
-Finished running 1 seed, 17 table models, 149 data tests, 2 unit tests, 4 view models in 0 hours 0 minutes and 1.58 seconds (1.58s).
-Done. PASS=173 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=173
+Finished running 6 incremental models, 1 seed, 1 snapshot, 11 table models, 165 data tests, 3 unit tests, 5 view models in 0 hours 0 minutes and 7.04 seconds (7.04s).
+Done. PASS=192 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=192
 wrote reports/figures/mrr_trend.png
 ...
 wrote reports/report.md
 ```
 
 The warehouse is a single DuckDB file, `data/warehouse.duckdb`, with schemas `staging`,
-`intermediate`, `marts` and `seeds`. `make docs` writes a self-contained dbt docs page to
+`intermediate`, `marts`, `snapshots` and `seeds`. `make data` starts a new one, because the
+snapshot's history belongs to one dataset. `make docs` writes a self-contained dbt docs page to
 `dbt/target/static_index.html`. Run `make help` to see every target.
 
 ### Investigate a month's churn
@@ -131,6 +138,39 @@ It retains historical churn for customers who reactivated later and distinguishe
 zero-churn month from an absent month. See the [complete workflow and limits](docs/CHURN_INVESTIGATION.md)
 and [real DuckDB regression tests](tests/test_churn.py). The selected month must exist in your build;
 this example is covered by both the default build and the 24-month CI fixture.
+
+### Incremental loads and subscription history
+
+The six event and daily feeds load incrementally: each run reprocesses a 7-day lookback window,
+so rows that arrive up to a week late are absorbed, and a newer version of a row (an invoice
+that was open and is now paid) replaces the old one through its unique key. A dbt snapshot
+records each customer's plan, seats, price, MRR and status as a type 2 history on business
+dates, so the state on any past date is one query:
+
+```sql
+select customer_id, subscription_status, plan_code, seats, mrr_usd
+from snapshots.snp_subscription_state
+where dbt_valid_from <= timestamp '2025-06-30'
+  and (dbt_valid_to is null or dbt_valid_to > timestamp '2025-06-30');
+```
+
+A full build records only the current state; history accumulates with each load. To see it
+work, and to check that loading day by day gives exactly what a full refresh gives:
+
+```bash
+uv run saasgen --daily-batches data/batches   # the same rows, one folder per arrival day
+make incremental-check                        # load day by day, build, compare (3m20s here)
+make incremental-check MONTHS=6 SCALE=0.25 DAILY_DAYS=14   # the shorter run CI does
+```
+
+`make incremental-check` lands the first 35 months at once, then the last 31 days one at a
+time, running `dbt build` and the snapshot after each, then every test. It builds a second
+warehouse from the same files with `--full-refresh` and compares 24 relations row by row: the
+22 models, the seed and the snapshot's current versions. With the default seed it reports `Incremental build
+equals the full refresh.` In that run dbt took a median of 2.3 seconds per daily incremental
+build and 6.1 seconds for the full refresh with all tests, so at this data size incremental
+builds bring no speed-up; [DESIGN.md](docs/DESIGN.md) (decisions 14 to 16) explains why, the
+lookback trade-off and what the snapshot cannot record.
 
 ## Key outputs
 
@@ -161,7 +201,7 @@ how much MRR is still billed at pre-price-change list prices.
 
 ## Data quality
 
-`dbt build` runs 149 data tests and 2 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 165 data tests and 3 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:
@@ -176,9 +216,14 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_mrr_matches_billing` | For every customer-month with MRR, the invoice in force, normalised to a month, equals that MRR. MRR comes from subscription events and invoices from billing, so this cross-checks two systems. |
 | `assert_paid_invoices_have_one_successful_payment` | Paid invoices have exactly one successful charge; open and uncollectible invoices have none. This only holds after staging drops duplicate payment webhooks. |
 | `assert_funnel_stages_only_narrow` | Trials never exceed signups and paid customers never exceed trials. |
+| `assert_snapshot_windows_are_contiguous` | A customer's snapshot versions never overlap and leave no gaps. |
+| `assert_snapshot_has_one_current_version_per_customer` | Exactly one current version per customer. |
+| `assert_snapshot_matches_current_state` | The current versions equal `int_subscription_state`. |
+| `assert_snapshot_history_matches_month_end_mrr` | Every version in force on a month end agrees with `fct_mrr`, which is rebuilt from the full event log. |
 
-The unit tests feed hand-written rows through `int_subscription_periods` and `fct_mrr_movements`
-to pin down period boundaries, annual-to-monthly normalisation and every movement type. On the
+The unit tests feed hand-written rows through `int_subscription_periods`, `fct_mrr_movements`
+and `int_subscription_state` to pin down period boundaries, annual-to-monthly normalisation,
+every movement type and the as-of boundary of the current state. On the
 Python side, pytest covers generator determinism, referential integrity, date ordering, billing
 consistency and calibration (generated rates against configured parameters), plus the report and
 the churn investigation. CI reports line and branch coverage on every run and fails below 85%.
@@ -203,16 +248,19 @@ make data SCALE=0.25 MONTHS=24   # a smaller dataset; SEED=7 for a different one
   relative to that directory. The Makefile sets `DBT_PROFILES_DIR` and turns off dbt's anonymous
   usage tracking. For ad-hoc commands: `cd dbt && DBT_PROFILES_DIR=. uv run dbt build --select fct_mrr+`.
 - CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs from the lockfile,
-  generates a smaller dataset, runs `dbt build`, the report, pytest and the linters (ruff, mypy,
-  sqlfluff with the Jinja templater).
+  generates a smaller dataset, runs `dbt build`, the report, the incremental load check
+  (6 months, the last 14 days one at a time), pytest and the linters (ruff, mypy, sqlfluff with
+  the Jinja templater).
 - [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes the static dbt docs to
   <https://ult666666.github.io/saas-analytics-warehouse/> on every push to `main`, with GitHub
   Pages set to use "GitHub Actions" as its source.
 
 ```text
-src/saasgen/       data generator (config.py holds every simulation parameter)
+src/saasgen/       data generator (config.py holds every simulation parameter), daily batches
+                   and the incremental load check (backfill.py)
 src/saasreport/    charts and report.md from the marts
 dbt/models/        staging/ -> intermediate/ -> marts/core/ and marts/reporting/
+dbt/snapshots/     snp_subscription_state (SCD type 2)
 dbt/tests/         singular business-invariant tests and two generic tests
 tests/             pytest suite
 reports/           generated report.md and figures/ (committed)
@@ -233,14 +281,20 @@ Limitations:
 - **CAC is media spend only.** No salaries or tooling, first-touch attribution and no lag between
   spend and conversion. Gross margin is an assumed constant (80%) because the data has no cost of
   revenue. LTV assumes constant churn and is undiscounted.
-- **DuckDB-specific SQL.** The date spine, `qualify` and `filter` clauses are written for DuckDB.
-  Every model is a full refresh, and the schema-naming macro suits a single developer.
+- **DuckDB-specific SQL.** The date spine, `qualify` and `filter` clauses are written for DuckDB,
+  and the schema-naming macro suits a single developer.
+- **Late data is bounded by the lookback window.** A row more than 7 days older than the newest
+  loaded row is missed by incremental runs until a full refresh, and nothing alerts on it. The
+  marts are still full rebuilds, and because the sources are CSV files read in full, incremental
+  runs are not faster at this size.
+- **Snapshot history starts at the first snapshot run** and holds only the states a run saw: a
+  late change that was already superseded when it arrived never appears.
 - **SQL linting checks templated style, not compiled SQL.** sqlfluff uses its Jinja templater
   with emulated dbt functions, so it is fast and needs no database, but it does not see the SQL
   dbt actually compiles.
 
-Roadmap: incremental `fct_mrr` and snapshots of subscription state, multi-subscription and
-proration support, MetricFlow semantic models, and a small dashboard on top of the marts.
+Roadmap: an incremental `fct_mrr`, multi-subscription and proration support, MetricFlow semantic
+models, and a small dashboard on top of the marts.
 
 ## License
 

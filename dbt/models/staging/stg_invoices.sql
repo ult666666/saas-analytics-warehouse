@@ -1,3 +1,12 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='invoice_id',
+        incremental_strategy='delete+insert',
+        on_schema_change='fail'
+    )
+}}
+
 with source as (
     select * from {{ source('raw', 'invoices') }}
 ),
@@ -13,8 +22,22 @@ renamed as (
         plan_price_id,
         cast(seats as integer) as seats,
         {{ cents_to_dollars('amount_due_cents') }} as amount_due_usd,
-        status as invoice_status
+        status as invoice_status,
+        cast(updated_at as timestamp) as updated_at
     from source
+),
+
+recent as (
+    select * from renamed
+    where {{ incremental_lookback('updated_at') }}
+),
+
+latest_versions as (
+    -- An invoice arrives again when its status changes (open, then paid or uncollectible).
+    -- Keep its newest version; the unique key replaces the older one already loaded.
+    select *
+    from recent
+    qualify row_number() over (partition by invoice_id order by updated_at desc) = 1
 )
 
-select * from renamed
+select * from latest_versions

@@ -3,6 +3,7 @@
 SEED ?= 42
 MONTHS ?= 36
 SCALE ?= 1.0
+DAILY_DAYS ?= 31
 RAW_DIR := data/raw
 WAREHOUSE := data/warehouse.duckdb
 
@@ -12,15 +13,18 @@ export DBT_PROFILES_DIR := $(CURDIR)/dbt
 export DBT_SEND_ANONYMOUS_USAGE_STATS := False
 
 .DEFAULT_GOAL := help
-.PHONY: help install data build report docs all lint test clean
+.PHONY: help install data build report docs all lint test incremental-check clean
 
 help: ## List the available targets
-	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-9s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-17s %s\n", $$1, $$2}'
 
 install: ## Create .venv from uv.lock
 	uv sync --locked
 
-data: ## Generate the synthetic raw CSV files in data/raw
+data: ## Generate the synthetic raw CSV files in data/raw (and start a new warehouse)
+	@# Incremental models and the snapshot keep state between builds, which only makes sense
+	@# for one dataset, so new raw data starts a new warehouse.
+	rm -f $(WAREHOUSE) $(WAREHOUSE).wal
 	uv run saasgen --seed $(SEED) --months $(MONTHS) --scale $(SCALE) --out $(RAW_DIR)
 
 build: ## Load, transform and test the warehouse (dbt build)
@@ -44,5 +48,9 @@ lint: ## Ruff lint, ruff format check, mypy and sqlfluff
 test: ## Python tests with coverage
 	uv run pytest
 
+incremental-check: ## Load day by day, build incrementally and compare with a full refresh
+	uv run python -m saasgen.backfill --seed $(SEED) --months $(MONTHS) --scale $(SCALE) \
+		--daily-days $(DAILY_DAYS) --work-dir build/backfill
+
 clean: ## Delete generated data, the warehouse and dbt artifacts
-	rm -rf $(RAW_DIR) $(WAREHOUSE) $(WAREHOUSE).wal dbt/target dbt/logs
+	rm -rf $(RAW_DIR) $(WAREHOUSE) $(WAREHOUSE).wal dbt/target dbt/logs build/backfill
