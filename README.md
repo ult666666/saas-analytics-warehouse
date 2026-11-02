@@ -126,6 +126,10 @@ make test      # pytest with coverage (fails under 85%)
 make data SCALE=0.25 MONTHS=24   # a smaller dataset; SEED=7 for a different one
 ```
 
+`make data` starts a new warehouse, because the incremental tables and the snapshot's
+history belong to one dataset. `make docs` writes a self-contained dbt docs page to
+`dbt/target/static_index.html`.
+
 dbt runs from inside `dbt/`, where `profiles.yml` lives, and the Makefile sets
 `DBT_PROFILES_DIR` for it. For ad-hoc commands:
 `cd dbt && DBT_PROFILES_DIR=. uv run dbt build --select fct_mrr+`. `make help` lists every
