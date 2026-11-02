@@ -15,6 +15,7 @@ dist/
 
 # Generated data and the DuckDB warehouse
 data/raw/
+data/batches/
 *.duckdb
 *.duckdb.wal
 

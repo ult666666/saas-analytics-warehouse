@@ -45,6 +45,9 @@ jobs:
       - name: Reconcile a historical churn investigation to the built marts
         run: uv run python -m saasreport.churn --month 2024-12 --output-dir "$RUNNER_TEMP/churn-2024-12"
 
+      - name: Load day by day, build incrementally and compare with a full refresh
+        run: make incremental-check MONTHS=6 SCALE=0.25 DAILY_DAYS=14
+
       - name: Python tests with coverage
         run: make test
 

@@ -205,7 +205,10 @@ models:
                 values: [voluntary, payment_failed]
 
   - name: stg_invoices
-    description: One invoice per billing period, issued on the period start date.
+    description: >
+      One invoice per billing period, issued on the period start date, in its newest version.
+      Incremental: each run reprocesses the lookback window, and a newer version of an invoice
+      (open, then paid or uncollectible) replaces the one already loaded.
     data_tests:
       - expression_is_true:
           arguments:
@@ -254,6 +257,9 @@ models:
           - accepted_values:
               arguments:
                 values: [paid, open, uncollectible]
+      - name: updated_at
+        description: When the invoice's status last changed; orders an invoice's versions.
+        data_tests: [not_null]
 
   - name: stg_payments
     description: >

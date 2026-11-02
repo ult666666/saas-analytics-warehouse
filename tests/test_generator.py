@@ -6,7 +6,7 @@ import dataclasses
 import hashlib
 import itertools
 from collections import Counter, defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -313,3 +313,21 @@ def test_cheaper_plans_churn_more(default_dataset: Dataset) -> None:
                 churned[plan_codes[price_id]] += 1
     rates = {code: churned[code] / exposure[code] for code in ("starter", "growth", "enterprise")}
     assert rates["starter"] > rates["growth"] > rates["enterprise"] > 0
+
+
+def test_invoice_updated_at_is_when_its_status_last_changed(default_dataset: Dataset) -> None:
+    attempts: dict[str, set[tuple[int, datetime, str]]] = {}
+    for payment in default_dataset.payments:  # duplicates collapse in the set
+        attempts.setdefault(payment.invoice_id, set()).add(
+            (payment.attempt_number, payment.attempted_at, payment.status)
+        )
+    for invoice in default_dataset.invoices:
+        tries = sorted(attempts[invoice.invoice_id])
+        if invoice.status == "paid":
+            assert invoice.updated_at == next(
+                at for _, at, status in tries if status == "succeeded"
+            )
+        elif invoice.status == "uncollectible":
+            assert invoice.updated_at == tries[-1][1]
+        else:  # still open: unchanged since the first charge
+            assert invoice.updated_at == tries[0][1]

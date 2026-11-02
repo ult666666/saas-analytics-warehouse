@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Incremental staging: `stg_signups`, `stg_trials`, `stg_subscription_events`, `stg_invoices`,
+  `stg_payments` and `stg_marketing_spend` are incremental models (`delete+insert` on their
+  unique key) that reprocess an `incremental_lookback_days` window (7 days), so late rows are
+  absorbed and newer versions replace older ones.
+- `snp_subscription_state`, a dbt snapshot (SCD type 2, timestamp strategy on business dates)
+  of each customer's plan, seats, price, MRR and status, built from the new
+  `int_subscription_state` model, with four singular tests and a unit test.
+- `saasgen --daily-batches DIR` writes the same seeded data as daily batches, including
+  invoices that arrive again when their status changes and a seeded 3% of rows arriving one to
+  five days late.
+- `python -m saasgen.backfill` (`make incremental-check`): loads the batches day by day, builds
+  incrementally with snapshots, runs every test and compares every relation with a full
+  refresh by row hashes. CI runs a short version.
+
+### Changed
+
+- Raw invoices have an `updated_at` column (when the status last changed); `stg_invoices`
+  keeps the newest version of each invoice. Every other generated value is unchanged, and
+  `reports/report.md` is identical.
+- `make data` deletes the warehouse file, since incremental tables and the snapshot keep state
+  that belongs to one dataset. A warehouse built by an earlier version needs `make clean` (or
+  `dbt build --full-refresh`) once.
+- `SAAS_WAREHOUSE` and `SAAS_RAW_DIR` can point dbt at another DuckDB file and raw folder.
+
 ## [0.1.0] - 2026-10-23
 
 ### Added

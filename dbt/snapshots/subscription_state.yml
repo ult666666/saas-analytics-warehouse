@@ -1,0 +1,14 @@
+snapshots:
+  - name: snp_subscription_state
+    relation: ref('int_subscription_state')
+    description: >
+      History of each customer's subscription state (plan, seats, price, MRR and status) as
+      a type 2 slowly changing dimension. Every `dbt snapshot` adds a version for each customer
+      whose state changed since the last run. The timestamp strategy uses state_started_at, the
+      day the state took effect, so dbt_valid_from and dbt_valid_to are business dates: the
+      version in force on a day is the one with dbt_valid_from <= day < dbt_valid_to (or no
+      dbt_valid_to). History starts at the first snapshot run; see docs/DESIGN.md.
+    config:
+      unique_key: customer_id
+      strategy: timestamp
+      updated_at: state_started_at

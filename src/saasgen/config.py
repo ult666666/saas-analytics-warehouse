@@ -193,6 +193,13 @@ FAILURE_CODES: tuple[tuple[str, float], ...] = (
 )
 DUPLICATE_PAYMENT_RATE = 0.005  # payment webhooks are delivered at least once
 
+# --- Daily batches (the incremental-load simulation) ----------------------------------------------
+
+# Share of rows that reach the warehouse late, and the most days they can be late by. The
+# incremental models' lookback window must be longer than this (see dbt_project.yml).
+LATE_ARRIVAL_SHARE = 0.03
+MAX_ARRIVAL_DELAY_DAYS = 5
+
 
 # --- Run configuration ---------------------------------------------------------------------------
 

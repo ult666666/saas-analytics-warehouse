@@ -3,5 +3,6 @@ saas_warehouse:
   outputs:
     dev:
       type: duckdb
-      path: ../data/warehouse.duckdb
+      # SAAS_WAREHOUSE lets the load simulation (saasgen.backfill) build separate warehouses.
+      path: "{{ env_var('SAAS_WAREHOUSE', '../data/warehouse.duckdb') }}"
       threads: 4

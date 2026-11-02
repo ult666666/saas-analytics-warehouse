@@ -224,6 +224,7 @@ class BillingSimulator:
             random_time_on(self.rng, period_start + timedelta(days=days)) for days in RETRY_DAYS
         ]
         status = "open"
+        updated_at = charged_at  # an open invoice keeps the time it was first charged
         for attempt_number, attempted_at in enumerate(attempt_times, start=1):
             if attempted_at.date() > self.config.end_date:
                 break  # remaining retries fall after the data ends: the invoice stays open
@@ -235,10 +236,10 @@ class BillingSimulator:
                 succeeded = chance(self.rng, RETRY_SUCCESS_RATE)
             self._record_payment(invoice_id, attempt_number, attempted_at, amount_cents, succeeded)
             if succeeded:
-                status = "paid"
+                status, updated_at = "paid", attempted_at
                 break
             if attempt_number == len(attempt_times):
-                status = "uncollectible"
+                status, updated_at = "uncollectible", attempted_at
 
         self.invoices.append(
             Invoice(
@@ -251,6 +252,7 @@ class BillingSimulator:
                 seats=state.seats,
                 amount_due_cents=amount_cents,
                 status=status,
+                updated_at=updated_at,
             )
         )
         return attempt_times[-1] if status == "uncollectible" else None

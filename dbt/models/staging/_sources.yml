@@ -8,7 +8,8 @@ sources:
       column is read as text (`all_varchar`) so that all typing happens explicitly in the
       staging layer, as it would for a raw landing zone. Money is stored in integer cents.
     meta:
-      external_location: "read_csv('../data/raw/{name}.csv', header = true, all_varchar = true)"
+      # SAAS_RAW_DIR points the load simulation (saasgen.backfill) at its own landing files.
+      external_location: "read_csv('{{ env_var('SAAS_RAW_DIR', '../data/raw') }}/{name}.csv', header = true, all_varchar = true)"
     tables:
       - name: plans
         description: Price book. One row per plan, billing interval and price version.
@@ -25,7 +26,10 @@ sources:
           Subscription changes with the time they were requested (occurred_at) and the date
           they take effect (effective_date).
       - name: invoices
-        description: One invoice per billing period, issued on the first day of the period.
+        description: >
+          One invoice per billing period, issued on the first day of the period. updated_at is
+          when its status last changed. In daily loads an invoice can arrive twice: open when
+          its first charge fails, then paid or uncollectible after the retries.
       - name: payments
         description: >
           Charge attempts against invoices, as received from the payment provider's webhook.

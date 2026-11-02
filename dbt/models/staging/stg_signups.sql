@@ -1,3 +1,12 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key='signup_id',
+        incremental_strategy='delete+insert',
+        on_schema_change='fail'
+    )
+}}
+
 with source as (
     select * from {{ source('raw', 'signups') }}
 ),
@@ -13,6 +22,12 @@ cleaned as (
         upper(trim(country_code)) as country_code,
         company_size
     from source
+),
+
+recent as (
+    -- Incremental runs reprocess the lookback window, which absorbs late signups.
+    select * from cleaned
+    where {{ incremental_lookback('signed_up_at') }}
 )
 
-select * from cleaned
+select * from recent

@@ -8,6 +8,7 @@ model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
 clean-targets: ["target", "logs"]
 
 flags:
@@ -19,6 +20,10 @@ vars:
   unit_economics_lookback_months: 12
   # A signup cohort is complete once this many days have passed after the cohort month ends.
   funnel_maturity_days: 30
+  # Incremental staging models reprocess this many days before their newest row, so rows that
+  # arrive up to this late are absorbed. The generator delays rows by at most 5 days
+  # (saasgen.config.MAX_ARRIVAL_DELAY_DAYS), plus up to a day for the time of day.
+  incremental_lookback_days: 7
 
 models:
   saas_warehouse:
@@ -34,6 +39,10 @@ models:
     marts:
       +schema: marts
       +materialized: table
+
+snapshots:
+  saas_warehouse:
+    +schema: snapshots
 
 seeds:
   saas_warehouse:

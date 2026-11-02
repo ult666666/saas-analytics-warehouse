@@ -70,6 +70,7 @@ class Invoice(NamedTuple):
     seats: int
     amount_due_cents: int
     status: str  # paid, open (still in dunning at the end of the data) or uncollectible
+    updated_at: datetime  # when the status last changed: the first charge while still open
 
 
 class Payment(NamedTuple):
