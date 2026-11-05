@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
 ### Added
 
 - Incremental staging: `stg_signups`, `stg_trials`, `stg_subscription_events`, `stg_invoices`,
@@ -21,6 +23,10 @@ All notable changes to this project are documented in this file. The format foll
 - `python -m saasgen.backfill` (`make incremental-check`): loads the batches day by day, builds
   incrementally with snapshots, runs every test and compares every relation with a full
   refresh row by row. CI runs a short version.
+- `python -m saasreport.churn --month YYYY-MM --output-dir DIR` traces one month of churn in the
+  MRR bridge to the fictional customers and acquisition channels behind it. It checks that its
+  counts and losses reconcile with the bridge, then writes three CSV files and a Markdown
+  summary. `docs/CHURN_INVESTIGATION.md` covers the workflow, and CI runs it for 2024-12.
 
 ### Changed
 
