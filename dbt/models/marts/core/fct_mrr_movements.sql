@@ -12,7 +12,7 @@ cancel_events as (
         cancel_reason,
         row_number() over (
             partition by customer_id, date_trunc('month', effective_date)
-            order by effective_date desc, occurred_at desc
+            order by effective_date desc, occurred_at desc, event_id desc
         ) as recency_rank
     from {{ ref('stg_subscription_events') }}
     where event_type = 'cancel'

@@ -51,7 +51,7 @@ lint: ## Ruff lint, ruff format check, mypy and sqlfluff
 test: ## Python tests with coverage
 	uv run pytest
 
-reconcile: ## Independently check month-end MRR, paying customers and channel spend against raw CSVs
+reconcile: ## Independently check monthly MRR bridge movements, customer counts and channel spend
 	uv run python -m saasreport.reconcile
 
 incremental-check: ## Load day by day, build incrementally and compare with a full refresh

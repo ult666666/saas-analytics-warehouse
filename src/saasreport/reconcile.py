@@ -1,4 +1,4 @@
-"""Check monthly bridge balances and unit economics spend directly against the raw CSVs."""
+"""Check monthly MRR bridge movements, customer counts and channel spend against the raw CSVs."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import csv
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass, fields
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import zip_longest
@@ -75,8 +76,65 @@ def _event_order(event: dict[str, str]) -> tuple[date, datetime, str]:
     return effective, occurred.replace(tzinfo=None), event["event_id"]
 
 
-def _balances(raw_dir: Path, months: list[date]) -> list[tuple[date, int, Decimal]]:
-    """Replay events in effective order, observing the customer balances at each month end."""
+@dataclass
+class _BridgeMonth:
+    month_start: date
+    starting_mrr_usd: Decimal = Decimal(0)
+    new_mrr_usd: Decimal = Decimal(0)
+    expansion_mrr_usd: Decimal = Decimal(0)
+    reactivation_mrr_usd: Decimal = Decimal(0)
+    contraction_mrr_usd: Decimal = Decimal(0)
+    churned_mrr_usd: Decimal = Decimal(0)
+    involuntary_churned_mrr_usd: Decimal = Decimal(0)
+    net_new_mrr_usd: Decimal = Decimal(0)
+    ending_mrr_usd: Decimal = Decimal(0)
+    starting_customers: int = 0
+    new_customers: int = 0
+    reactivated_customers: int = 0
+    churned_customers: int = 0
+    ending_customers: int = 0
+
+
+def _bridge_month(
+    month: date,
+    opening: dict[str, Decimal],
+    closing: dict[str, Decimal],
+    previously_paid: set[str],
+    cancel_reasons: dict[str, str],
+) -> _BridgeMonth:
+    row = _BridgeMonth(
+        month_start=month,
+        starting_mrr_usd=sum(opening.values(), Decimal(0)),
+        ending_mrr_usd=sum(closing.values(), Decimal(0)),
+        starting_customers=len(opening),
+        ending_customers=len(closing),
+    )
+    row.net_new_mrr_usd = row.ending_mrr_usd - row.starting_mrr_usd
+    for customer in opening.keys() | closing.keys():
+        previous = opening.get(customer, Decimal(0))
+        current = closing.get(customer, Decimal(0))
+        change = current - previous
+        if previous == 0:
+            if customer in previously_paid:
+                row.reactivation_mrr_usd += change
+                row.reactivated_customers += 1
+            else:
+                row.new_mrr_usd += change
+                row.new_customers += 1
+        elif current == 0:
+            row.churned_mrr_usd += change
+            row.churned_customers += 1
+            if cancel_reasons.get(customer) == "payment_failed":
+                row.involuntary_churned_mrr_usd += change
+        elif change > 0:
+            row.expansion_mrr_usd += change
+        elif change < 0:
+            row.contraction_mrr_usd += change
+    return row
+
+
+def _bridge(raw_dir: Path, months: list[date]) -> list[_BridgeMonth]:
+    """Replay all effective events, comparing only consecutive published month-end states."""
     plans = _read(raw_dir, "plans", {"plan_price_id", "unit_amount_cents", "billing_interval"})
     prices = {row["plan_price_id"]: row for row in plans}
     events = sorted(
@@ -89,6 +147,7 @@ def _balances(raw_dir: Path, months: list[date]) -> list[tuple[date, int, Decima
                 "event_id",
                 "customer_id",
                 "event_type",
+                "cancel_reason",
                 "plan_price_id",
                 "seats",
             },
@@ -96,16 +155,20 @@ def _balances(raw_dir: Path, months: list[date]) -> list[tuple[date, int, Decima
         key=_event_order,
     )
     current: dict[str, Decimal] = {}
-    balances = []
+    opening: dict[str, Decimal] = {}
+    previously_paid: set[str] = set()
+    rows = []
     index = 0
     for month in months:
         cutoff = month_end(month)
+        cancel_reasons: dict[str, str] = {}
         while index < len(events) and date.fromisoformat(events[index]["effective_date"]) <= cutoff:
             event = events[index]
             index += 1
             customer = event["customer_id"]
             if event["event_type"] == "cancel":
                 current.pop(customer, None)
+                cancel_reasons[customer] = event["cancel_reason"]
                 continue
             price = prices[event["plan_price_id"]]
             cents = int(event["seats"]) * int(price["unit_amount_cents"])
@@ -113,10 +176,11 @@ def _balances(raw_dir: Path, months: list[date]) -> list[tuple[date, int, Decima
             current[customer] = (Decimal(cents) / (100 * interval)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-        balances.append(
-            (month, sum(mrr > 0 for mrr in current.values()), sum(current.values(), Decimal(0)))
-        )
-    return balances
+        closing = {customer: mrr for customer, mrr in current.items() if mrr > 0}
+        rows.append(_bridge_month(month, opening, closing, previously_paid, cancel_reasons))
+        previously_paid.update(closing)
+        opening = closing
+    return rows
 
 
 def _channel_spend(
@@ -131,6 +195,27 @@ def _channel_spend(
             cents[row["channel"]] += int(row["spend_cents"])
     cents["all_channels"] = sum(cents.values())
     return [(name, first, last, Decimal(total) / 100) for name, total in sorted(cents.items())]
+
+
+def _check_bridge(connection: duckdb.DuckDBPyConnection, expected: list[_BridgeMonth]) -> None:
+    columns = [field.name for field in fields(_BridgeMonth)]
+    observed = connection.execute(
+        f"select {', '.join(columns)} from marts.rpt_mrr_bridge order by month_start"
+    ).fetchall()
+    for raw, mart in zip_longest(expected, observed):
+        raw_month = raw.month_start if raw is not None else None
+        mart_month = mart[0] if mart is not None else None
+        if raw is None or mart is None or raw_month != mart_month:
+            raise ValueError(
+                f"month_start mismatch: raw CSVs give {raw_month}, warehouse gives {mart_month}"
+            )
+        for column, actual in zip(columns[1:], mart[1:], strict=True):
+            value = getattr(raw, column)
+            if value != actual:
+                raise ValueError(
+                    f"{raw_month} {column} mismatch: raw CSVs give {value}, "
+                    f"warehouse gives {actual}"
+                )
 
 
 def _compare(
@@ -149,14 +234,7 @@ def reconcile(raw_dir: Path, database: Path, lookback_months: int = 12) -> tuple
     months = _closed_months(spend)
     expected_spend = _channel_spend(spend, months[-lookback_months:])
     with duckdb.connect(str(database), read_only=True) as connection:
-        _compare(
-            "month, paying customers, ending MRR",
-            _balances(raw_dir, months),
-            connection.execute(
-                """select month_start, ending_customers, ending_mrr_usd
-                   from marts.rpt_mrr_bridge order by month_start"""
-            ).fetchall(),
-        )
+        _check_bridge(connection, _bridge(raw_dir, months))
         _compare(
             "channel, window start, window end, spend",
             expected_spend,
@@ -181,7 +259,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError, KeyError, duckdb.Error) as error:
         print(f"Reconciliation failed: {error}", file=sys.stderr)
         return 1
-    print(f"Raw CSVs agree with {months} monthly balances and {rows} channel spend rows.")
+    print(f"Raw CSVs agree with {months} monthly MRR bridge rows and {rows} channel spend rows.")
     return 0
 
 

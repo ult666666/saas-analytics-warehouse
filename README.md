@@ -106,12 +106,17 @@ pytest covers the generator, the report and the churn investigation, and CI fail
 lists every invariant, and the breaks used to check that the tests can fail.
 
 After `make all`, run `make reconcile` to check two reporting marts directly against the raw
-files. It replays subscription events at each completed month end, prices the active seats,
-and compares MRR and paying customer counts to the bridge. It also sums raw marketing spend
-over the observed unit economics window for each channel and the blended total. The command
-prints the first mismatch and exits with code 1. It needs at least one raw spend date to
-establish the calendar. A partial extract can cover zero completed months, and a completed
-month can have zero subscriptions. For a different warehouse or lookback, run
+files. It compares each customer’s balance at consecutive completed month ends to rebuild
+new, expansion, reactivation, contraction and churn MRR, including the dollars lost to
+payment failure. It checks all nine dollar columns and five customer counts in the monthly bridge.
+The first published month opens at zero. Earlier events determine which subscriptions are
+active at its close, and a customer’s first positive published balance counts as new.
+
+The command also sums raw marketing spend over the unit economics window for each channel
+and the blended total. A bridge mismatch prints the month, column and two values, and exits
+with code 1. At least one raw spend date is required to establish the calendar. A partial extract
+can cover zero completed months, and a completed month can have zero subscriptions. For a
+different warehouse or lookback, run
 `uv run python -m saasreport.reconcile --help`.
 
 ## Investigate a month's churn
