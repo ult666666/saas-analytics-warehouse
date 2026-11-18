@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from saasreport.data import CHANNEL_LABELS, ReportData, pooled_retention
-from saasreport.formatting import month_label, optional, pct, signed_usd, usd
+from saasreport.formatting import economics_period, month_label, optional, pct, signed_usd, usd
 
 RETENTION_CHECKPOINTS = (1, 3, 6, 12, 24)
 
@@ -27,9 +27,9 @@ def render_markdown(data: ReportData) -> str:
     losses = sum(month.contraction + month.churned for month in window)
     churned = sum(month.churned for month in window)
     involuntary = sum(month.involuntary_churned for month in window)
-    logo_churn = sum(month.churned_customers for month in window) / max(
-        1, sum(month.starting_customers for month in window)
-    )
+    at_risk = sum(month.starting_customers for month in window)
+    logo_churn = sum(month.churned_customers for month in window) / at_risk if at_risk else None
+    arpa = last.ending_mrr / last.ending_customers if last.ending_customers else None
 
     lines = [
         "# Tallyloom metrics report",
@@ -48,11 +48,11 @@ def render_markdown(data: ReportData) -> str:
         ["Ending MRR", usd(last.ending_mrr)],
         ["ARR (MRR x 12)", usd(last.ending_mrr * 12)],
         ["Paying customers", f"{last.ending_customers:,}"],
-        ["ARPA (MRR per paying customer)", usd(last.ending_mrr / max(1, last.ending_customers))],
+        ["ARPA (MRR per paying customer)", optional(arpa, "${:,.0f}")],
         [f"MRR growth, {period}", optional(_growth(start_mrr, last.ending_mrr), "{:+.1%}")],
         [f"Net new MRR, {period}", signed_usd(last.ending_mrr - start_mrr)],
         [f"Quick ratio, {period}", optional(gains / -losses if losses else None, "{:.2f}")],
-        [f"Average monthly logo churn, {period}", pct(logo_churn, 2)],
+        [f"Average monthly logo churn, {period}", optional(logo_churn, "{:.2%}")],
     ]
     lines += table(["Metric", "Value"], headline)
 
@@ -105,11 +105,12 @@ def render_markdown(data: ReportData) -> str:
         ["Months since start", "Cohorts", "Logo retention", "Net revenue retention"],
         retention_rows,
     )
+    economics_window = economics_period(data)
     lines += [
         "",
         "Rates are pooled over every cohort old enough to reach that month (ratio of sums).",
         "",
-        "## Unit economics, trailing 12 months",
+        "## Unit economics" + (f", {economics_window}" if economics_window else ""),
         "",
         "![CAC payback by channel](figures/cac_payback.png)",
         "",
@@ -160,7 +161,7 @@ def render_markdown(data: ReportData) -> str:
             f"{row.trials:,}",
             f"{row.paid:,}",
             pct(row.signup_to_trial),
-            pct(row.trial_to_paid),
+            optional(row.trial_to_paid, "{:.1%}"),
             pct(row.signup_to_paid),
         ]
         for row in data.funnel
@@ -179,7 +180,8 @@ def render_markdown(data: ReportData) -> str:
     )
     lines += [
         "",
-        "Only signup cohorts that ended at least 30 days before the data ends are included.",
+        "Only mature signup cohorts are included. The default waiting period is 30 days after "
+        "the signup month ends.",
     ]
 
     if data.plan_mix:

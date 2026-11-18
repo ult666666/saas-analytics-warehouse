@@ -69,8 +69,8 @@ select
     current_state.current_plan_code,
     coalesce(current_state.current_mrr_usd, 0) as current_mrr_usd,
     coalesce(current_state.current_mrr_usd, 0) > 0 as is_active,
-    mrr_history.active_months,
-    mrr_history.churn_count,
+    coalesce(mrr_history.active_months, 0) as active_months,
+    coalesce(mrr_history.churn_count, 0) as churn_count,
     coalesce(collected_cash.lifetime_paid_usd, 0) as lifetime_paid_usd
 from funnel
 left join mrr_history

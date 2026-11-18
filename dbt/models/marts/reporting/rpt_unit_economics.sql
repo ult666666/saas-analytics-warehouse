@@ -7,12 +7,13 @@
 
 with window_bounds as (
     select
-        cast(
-            date_trunc('month', max(date_day)) - to_months({{ lookback_months }} - 1) as date
+        greatest(
+            min(month_start),
+            cast(max(month_start) - to_months({{ lookback_months }} - 1) as date)
         ) as first_month,
-        cast(date_trunc('month', max(date_day)) as date) as last_month,
-        max(date_day) as last_date
-    from {{ ref('dim_date') }}
+        max(month_start) as last_month,
+        max(month_end) as last_date
+    from {{ ref('int_reporting_months') }}
 ),
 
 channels as (
@@ -69,8 +70,10 @@ channel_activity as (
 metrics as (
     select
         channel_totals.channel,
+        window_bounds.first_month as window_start,
+        window_bounds.last_date as window_end,
         channel_totals.marketing_spend_usd,
-        channel_activity.new_customers,
+        coalesce(channel_activity.new_customers, 0) as new_customers,
         -- No spend means no CAC: organic customers are not free, their cost is unmeasured.
         case
             when channel_totals.marketing_spend_usd > 0
@@ -81,6 +84,7 @@ metrics as (
         channel_activity.churned_customer_months
         / nullif(channel_activity.customer_months_at_risk, 0) as monthly_logo_churn_rate
     from channel_totals
+    cross join window_bounds
     left join channel_activity
         on channel_totals.channel = channel_activity.channel
 )
@@ -98,5 +102,7 @@ select
         as ltv_usd,
     round(cac_usd / nullif(arpa_usd * {{ gross_margin }}, 0), 1) as cac_payback_months,
     round(arpa_usd * {{ gross_margin }} / nullif(monthly_logo_churn_rate, 0) / cac_usd, 2)
-        as ltv_to_cac_ratio
+        as ltv_to_cac_ratio,
+    window_start,
+    window_end
 from metrics

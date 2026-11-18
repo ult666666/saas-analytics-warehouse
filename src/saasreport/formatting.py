@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from saasreport.data import ReportData
+
 
 def usd(value: float) -> str:
     """Whole dollars with thousands separators, e.g. ``$1,150,247``."""
@@ -45,3 +47,12 @@ def optional(value: float | None, formatter: str = "{:.1f}", missing: str = "n/a
 def month_label(day: date) -> str:
     """``2025-12-01`` -> ``Dec 2025``."""
     return day.strftime("%b %Y")
+
+
+def economics_period(data: ReportData) -> str:
+    """Observed window recorded by the mart, when available."""
+    if data.economics:
+        row = data.economics[0]
+        if row.window_start and row.window_end:
+            return f"{month_label(row.window_start)} to {month_label(row.window_end)}"
+    return ""

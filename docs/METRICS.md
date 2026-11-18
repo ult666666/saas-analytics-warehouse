@@ -12,7 +12,9 @@ to the dbt project in [`dbt/`](../dbt). All data is synthetic (Tallyloom is a fi
   timestamp at which a change was requested (`occurred_at`).
 - **Calendar.** The reporting calendar (`int_date_spine`, `dim_date`) runs from the first to the
   last day of data. The generator writes marketing spend for every day of the simulated window,
-  so the spend dates define it. Months are calendar months.
+  so the spend dates define it. Month-end MRR, retention and unit economics use only calendar
+  months whose first and last days the extract covers. During a daily load, a June 14 extract
+  can report month-end results through May 31. The subscription snapshot still reflects June 14.
 - **Rates** are stored as ratios between 0 and 1 (`0.0299` = 2.99%). Rates over several months
   are pooled, as a ratio of sums, never an average of monthly percentages.
 
@@ -52,7 +54,7 @@ MRR = 0 if no period is in force.
   previous period without opening a new one. Periods of one customer never overlap
   (`assert_no_overlapping_subscription_periods`).
 - **Spine.** `fct_mrr` has a row for every month from the customer's first subscription month to
-  the last month of data, **including zero-MRR months after churn**, so the previous row is always
+  the last completed month, **including zero-MRR months after churn**, so the previous row is always
   the previous calendar month.
 - **Mid-month plan changes:** the state on the last day of the month counts for the whole month.
   A change effective on the last day counts in that month; a change effective on the 1st counts
@@ -147,7 +149,8 @@ logo churn = sum of churned customers / sum of starting customers over the 12 mo
 `all_channels` row. Do not add the blended row to the channel rows.
 
 - **Window:** the trailing `unit_economics_lookback_months` (default 12) calendar months that end
-  with the last month of data.
+  with the last completed month. `window_start` and `window_end` expose the actual bounds,
+  including shorter histories.
 - **Channel attribution:** first touch. A customer belongs to the channel of their original
   signup: the cleaned `utm_source`, mapped by the `channel_mapping` seed. Reactivations are not
   new customers.

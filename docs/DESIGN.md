@@ -47,6 +47,7 @@ flowchart LR
     seed[("seed:<br/>channel_mapping")]
     subgraph intermediate["intermediate"]
         int_date_spine
+        int_reporting_months
         int_signup_funnel
         int_subscription_periods
         int_customer_months
@@ -72,7 +73,8 @@ flowchart LR
     stg_marketing_spend --> int_date_spine
     stg_signups & stg_trials & stg_customers & seed --> int_signup_funnel
     stg_subscription_events & stg_plans --> int_subscription_periods
-    int_subscription_periods & int_date_spine --> int_customer_months
+    int_date_spine --> int_reporting_months
+    int_subscription_periods & int_reporting_months --> int_customer_months
     int_subscription_periods & stg_plans & int_date_spine --> int_subscription_state
     int_subscription_state --> snp_subscription_state
     int_date_spine --> dim_date
@@ -80,9 +82,9 @@ flowchart LR
     int_customer_months & int_subscription_periods --> fct_mrr
     fct_mrr & stg_subscription_events --> fct_mrr_movements
     int_signup_funnel & fct_mrr & stg_invoices & stg_payments --> dim_customers
-    fct_mrr & fct_mrr_movements & dim_date --> rpt_mrr_bridge
+    fct_mrr & fct_mrr_movements & int_reporting_months --> rpt_mrr_bridge
     fct_mrr --> rpt_cohort_retention
-    fct_mrr & dim_customers & dim_date & stg_marketing_spend & seed --> rpt_unit_economics
+    fct_mrr & dim_customers & int_reporting_months & stg_marketing_spend & seed --> rpt_unit_economics
     int_signup_funnel & dim_date --> rpt_funnel
 ```
 
@@ -91,7 +93,7 @@ flowchart LR
 The output of `make all` with the default seed, abridged (timings vary by machine):
 
 ```text
-Generated synthetic Tallyloom data in 0.7s (seed=42, scale=1, 2023-01-01 to 2025-12-31)
+Generated synthetic Tallyloom data in 0.9s (seed=42, scale=1, 2023-01-01 to 2025-12-31)
   plans                       12 rows
   marketing_spend          4,384 rows
   signups                 24,694 rows
@@ -101,8 +103,8 @@ Generated synthetic Tallyloom data in 0.7s (seed=42, scale=1, 2023-01-01 to 2025
   invoices                26,272 rows
   payments                28,914 rows
 ...
-Finished running 6 incremental models, 1 seed, 1 snapshot, 11 table models, 165 data tests, 3 unit tests, 5 view models in 0 hours 0 minutes and 7.04 seconds (7.04s).
-Done. PASS=192 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=192
+Finished running 6 incremental models, 1 seed, 1 snapshot, 11 table models, 166 data tests, 5 unit tests, 6 view models in 0 hours 0 minutes and 2.59 seconds (2.59s).
+Done. PASS=196 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=196
 wrote reports/figures/mrr_trend.png
 ...
 wrote reports/report.md
@@ -167,7 +169,9 @@ MRR, and one that ends on the 2nd counts as none. A daily grain would be about 3
 and is rarely needed for board metrics.
 
 **3. A gap-free customer x month spine.** `int_customer_months` gives every customer a row for
-every month from their first subscription to the end of data, including months after churn.
+every completed calendar month from their first subscription, including months after churn.
+A daily load before month end updates the subscription state and snapshot immediately. The
+monthly facts first include that month once the daily calendar reaches its last day.
 Without it, `lag(mrr_usd)` would compare non-adjacent months for customers who churn and return,
 and the bridge would stop reconciling. The bridge test exists to catch exactly that regression.
 
@@ -348,7 +352,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
 
 ### Data tests and the invariants they enforce
 
-`dbt build` runs 165 data tests and 3 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 166 data tests and 5 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:
@@ -368,9 +372,9 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_snapshot_matches_current_state` | The current versions equal `int_subscription_state`. |
 | `assert_snapshot_history_matches_month_end_mrr` | Every version in force on a month end agrees with `fct_mrr`, which is rebuilt from the full event log. |
 
-The unit tests feed hand-written rows through `int_subscription_periods`, `fct_mrr_movements`
-and `int_subscription_state` to pin down period boundaries, annual-to-monthly normalisation,
-every movement type and the as-of boundary of the current state. On the
+The five dbt unit tests cover period boundaries, annual-to-monthly normalisation, every
+movement type, the current subscription state, completed reporting months and a sparse
+unit economics window. On the
 Python side, pytest covers generator determinism, referential integrity, date ordering, billing
 consistency and calibration (generated rates against configured parameters), plus the report and
 the churn investigation. CI reports line and branch coverage on every run and fails below 85%.

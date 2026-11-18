@@ -95,9 +95,14 @@ models:
               arguments:
                 values: [paid_search, paid_social, content, partner, organic, all_channels]
       - name: marketing_spend_usd
-        description: Spend in the window.
+        description: Spend within the completed reporting months.
       - name: new_customers
-        description: Customers whose first MRR month falls in the window.
+        description: Customers whose first MRR month falls in the window. Zero for inactive channels.
+        data_tests: [not_null]
+      - name: window_start
+        description: First day in the observed window. Null before the first completed month.
+      - name: window_end
+        description: Last day in the observed window. Null before the first completed month.
       - name: cac_usd
         description: marketing_spend_usd / new_customers; null for organic (no spend).
       - name: arpa_usd
@@ -146,3 +151,35 @@ models:
         description: >
           True when at least `funnel_maturity_days` (30) days have passed since the end of the
           signup month, so every trial in the cohort had time to finish.
+
+unit_tests:
+  - name: economics_excludes_partial_month_spend_and_keeps_empty_channels
+    model: rpt_unit_economics
+    overrides:
+      vars:
+        unit_economics_lookback_months: 2
+    given:
+      - input: ref('int_reporting_months')
+        rows:
+          - {month_start: "2024-02-01", month_end: "2024-02-29"}
+          - {month_start: "2024-03-01", month_end: "2024-03-31"}
+      - input: ref('channel_mapping')
+        rows:
+          - {channel: paid_search}
+          - {channel: content}
+      - input: ref('stg_marketing_spend')
+        rows:
+          - {channel: paid_search, spend_date: "2024-03-31", spend_usd: 400}
+          - {channel: paid_search, spend_date: "2024-04-01", spend_usd: 900}
+          - {channel: content, spend_date: "2024-02-29", spend_usd: 50}
+      - input: ref('dim_customers')
+        rows:
+          - {customer_id: c1, acquisition_channel: paid_search}
+      - input: ref('fct_mrr')
+        rows:
+          - {customer_id: c1, month_start: "2024-03-01", cohort_month: "2024-03-01", mrr_usd: 80, previous_mrr_usd: 0, is_active: true}
+    expect:
+      rows:
+        - {channel: content, window_start: "2024-02-01", window_end: "2024-03-31", marketing_spend_usd: 50, new_customers: 0, cac_usd: null, arpa_usd: null}
+        - {channel: paid_search, window_start: "2024-02-01", window_end: "2024-03-31", marketing_spend_usd: 400, new_customers: 1, cac_usd: 400, arpa_usd: 80}
+        - {channel: all_channels, window_start: "2024-02-01", window_end: "2024-03-31", marketing_spend_usd: 450, new_customers: 1, cac_usd: 450, arpa_usd: 80}

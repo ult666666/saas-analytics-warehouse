@@ -58,6 +58,8 @@ class ChannelEconomics:
     ltv: float | None
     payback_months: float | None
     ltv_to_cac: float | None
+    window_start: date | None
+    window_end: date | None
 
 
 @dataclass(frozen=True)
@@ -72,8 +74,8 @@ class ChannelFunnel:
         return self.trials / self.signups if self.signups else 0.0
 
     @property
-    def trial_to_paid(self) -> float:
-        return self.paid / self.trials if self.trials else 0.0
+    def trial_to_paid(self) -> float | None:
+        return self.paid / self.trials if self.trials else None
 
     @property
     def signup_to_paid(self) -> float:
@@ -120,13 +122,6 @@ COHORTS_SQL = """
         cohort_starting_mrr_usd, mrr_usd
     from marts.rpt_cohort_retention
     order by cohort_month, months_since_cohort_start
-"""
-
-ECONOMICS_SQL = """
-    select
-        channel, marketing_spend_usd, new_customers, cac_usd, arpa_usd, gross_margin_pct,
-        monthly_logo_churn_rate, ltv_usd, cac_payback_months, ltv_to_cac_ratio
-    from marts.rpt_unit_economics
 """
 
 FUNNEL_SQL = """
@@ -180,7 +175,9 @@ def load_report_data(connection: duckdb.DuckDBPyConnection) -> ReportData:
         for row in connection.execute(BRIDGE_SQL).fetchall()
     ]
     if not bridge:
-        raise ValueError("marts.rpt_mrr_bridge is empty: run 'make build' first")
+        raise ValueError(
+            "marts.rpt_mrr_bridge is empty: load and build at least one complete month"
+        )
 
     cohorts = [
         CohortCell(
@@ -194,21 +191,27 @@ def load_report_data(connection: duckdb.DuckDBPyConnection) -> ReportData:
         for row in connection.execute(COHORTS_SQL).fetchall()
     ]
 
+    # Selecting the DuckDB struct gives named fields. Older warehouses predate the
+    # observed window dates and can still render the measures they recorded.
     economics = sorted(
         (
             ChannelEconomics(
-                channel=str(row[0]),
-                marketing_spend=float(row[1]),
-                new_customers=int(row[2]),
-                cac=_optional_float(row[3]),
-                arpa=_optional_float(row[4]),
-                gross_margin=float(row[5]),
-                monthly_churn=_optional_float(row[6]),
-                ltv=_optional_float(row[7]),
-                payback_months=_optional_float(row[8]),
-                ltv_to_cac=_optional_float(row[9]),
+                channel=str(row["channel"]),
+                marketing_spend=float(row["marketing_spend_usd"]),
+                new_customers=int(row["new_customers"] or 0),
+                cac=_optional_float(row["cac_usd"]),
+                arpa=_optional_float(row["arpa_usd"]),
+                gross_margin=float(row["gross_margin_pct"]),
+                monthly_churn=_optional_float(row["monthly_logo_churn_rate"]),
+                ltv=_optional_float(row["ltv_usd"]),
+                payback_months=_optional_float(row["cac_payback_months"]),
+                ltv_to_cac=_optional_float(row["ltv_to_cac_ratio"]),
+                window_start=row.get("window_start"),
+                window_end=row.get("window_end"),
             )
-            for row in connection.execute(ECONOMICS_SQL).fetchall()
+            for (row,) in connection.execute(
+                "select e from marts.rpt_unit_economics as e"
+            ).fetchall()
         ),
         key=lambda economics: _channel_position(economics.channel),
     )

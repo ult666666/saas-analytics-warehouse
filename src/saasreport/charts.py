@@ -10,7 +10,13 @@ import numpy as np
 from matplotlib.ticker import FuncFormatter, PercentFormatter
 
 from saasreport.data import CHANNEL_LABELS, ReportData, pooled_retention
-from saasreport.formatting import month_label, pct, signed_usd_compact, usd_compact
+from saasreport.formatting import (
+    economics_period,
+    month_label,
+    pct,
+    signed_usd_compact,
+    usd_compact,
+)
 from saasreport.style import (
     DECREASE,
     INK,
@@ -56,7 +62,7 @@ def plot_mrr_trend(data: ReportData, path: Path) -> Path:
     ticks = [index for index, month in enumerate(months) if month.month in (1, 7)] or positions
     axes.set_xticks(ticks, [month_label(months[index]) for index in ticks])
     axes.set_xlim(-0.7, len(months) - 0.3)
-    axes.set_ylim(0, max(mrr) * 1.15)
+    axes.set_ylim(0, max(mrr) * 1.15 or 1.0)
     axes.yaxis.set_major_formatter(COMPACT_USD)
     style_axes(axes)
     add_titles(
@@ -124,7 +130,7 @@ def plot_mrr_bridge(data: ReportData, path: Path) -> Path:
     axes.plot([len(movements) + 0.31, len(movements) + 0.69], [end, end], color=INK_MUTED, lw=0.8)
 
     axes.set_xticks(positions, [bar.label for bar in bars])
-    axes.set_ylim(0, top * 1.12)
+    axes.set_ylim(0, top * 1.12 or 1.0)
     axes.yaxis.set_major_formatter(COMPACT_USD)
     style_axes(axes)
     axes.tick_params(axis="x", colors=INK_SECONDARY, labelsize=9.5)
@@ -140,6 +146,8 @@ def plot_mrr_bridge(data: ReportData, path: Path) -> Path:
 def plot_cohort_retention(data: ReportData, path: Path) -> Path:
     """Heatmap of logo retention per cohort, next to pooled retention curves."""
     cohort_months = sorted({cell.cohort_month for cell in data.cohorts})
+    if not cohort_months:
+        return _empty_chart(path, "Cohort retention", "No customers have reached a paid month end.")
     row_of = {month: row for row, month in enumerate(cohort_months)}
     width = max(cell.months_since_start for cell in data.cohorts) + 1
     matrix = np.full((len(cohort_months), width), np.nan)
@@ -225,6 +233,10 @@ def plot_cac_payback(data: ReportData, path: Path) -> Path:
     )
     blended = next((row for row in data.economics if row.channel == "all_channels"), None)
 
+    if not paid and (blended is None or blended.payback_months is None):
+        return _empty_chart(
+            path, "CAC payback by acquisition channel", "No channel has measurable payback."
+        )
     figure = new_figure(9.0, 4.4)
     axes = figure.add_axes((0.15, 0.14, 0.8, 0.62))
     positions = list(range(len(paid)))
@@ -251,15 +263,17 @@ def plot_cac_payback(data: ReportData, path: Path) -> Path:
         )
     axes.set_yticks(positions, [CHANNEL_LABELS[row.channel] for row in paid])
     axes.invert_yaxis()
-    axes.set_xlim(0, max(paybacks, default=1.0) * 1.45)
+    max_payback = max([*paybacks, (blended.payback_months or 0.0) if blended else 0.0])
+    axes.set_xlim(0, (max_payback or 1.0) * 1.45)
     axes.set_xlabel("Months of gross profit to recover CAC", color=INK_SECONDARY, fontsize=9.5)
     style_axes(axes, grid_axis="x")
     axes.tick_params(axis="y", colors=INK_SECONDARY, labelsize=10)
-    margin = paid[0].gross_margin if paid else 0.0
+    margin = data.economics[0].gross_margin
+    window = economics_period(data)
     add_titles(
         figure,
         "CAC payback by acquisition channel",
-        f"Trailing 12 months. CAC / (ARPA x {margin:.0%} gross margin). "
+        (f"{window}. " if window else "") + f"CAC / (ARPA x {margin:.0%} gross margin). "
         "Organic signups have no spend, so no CAC.",
     )
     return save(figure, path)
@@ -268,6 +282,10 @@ def plot_cac_payback(data: ReportData, path: Path) -> Path:
 def plot_funnel(data: ReportData, path: Path) -> Path:
     """Signup-to-trial and trial-to-paid conversion per channel."""
     rows = sorted(data.funnel, key=lambda row: row.signup_to_paid, reverse=True)
+    if not rows:
+        return _empty_chart(
+            path, "Funnel conversion by acquisition channel", "No mature signup cohorts."
+        )
     figure = new_figure(9.0, 4.9)
     axes = figure.add_axes((0.2, 0.12, 0.76, 0.68))
     positions = np.arange(len(rows))
@@ -278,7 +296,7 @@ def plot_funnel(data: ReportData, path: Path) -> Path:
     ):
         axes.barh(
             positions + offset,
-            values,
+            [v if v is not None else np.nan for v in values],
             height=bar_height,
             color=colour,
             edgecolor=SURFACE,
@@ -287,7 +305,12 @@ def plot_funnel(data: ReportData, path: Path) -> Path:
         )
         for position, value in zip(positions, values, strict=True):
             axes.text(
-                value + 0.01, position + offset, pct(value, 0), va="center", fontsize=8.5, color=INK
+                (value or 0.0) + 0.01,
+                position + offset,
+                pct(value, 0) if value is not None else "n/a",
+                va="center",
+                fontsize=8.5,
+                color=INK,
             )
     axes.set_yticks(
         positions,
@@ -305,6 +328,13 @@ def plot_funnel(data: ReportData, path: Path) -> Path:
     add_titles(
         figure,
         "Funnel conversion by acquisition channel",
-        "Signup cohorts that ended at least 30 days before the data ends",
+        "Signup cohorts that have reached the configured maturity window",
     )
+    return save(figure, path)
+
+
+def _empty_chart(path: Path, title: str, reason: str) -> Path:
+    figure = new_figure(9.0, 2.0)
+    add_titles(figure, title, "")
+    figure.text(0.02, 0.55, reason, fontsize=11, color=INK_SECONDARY)
     return save(figure, path)
