@@ -69,8 +69,9 @@ MRR = 0 if no period is in force.
   (`dim_customers.lifetime_paid_usd`).
 - **Price change:** MRR uses the price the customer is billed at, so grandfathered customers
   carry the old price until they change plan.
-- **Rounding:** each period's MRR is rounded to cents once. Every aggregate is an exact sum of
-  those values.
+- **Rounding:** each period's MRR is rounded to cents once, with half-cent ties rounded away
+  from zero. For example, an annual charge of $10.62 contributes $0.89 per month. Every
+  aggregate is an exact sum of those values.
 - **Not in scope:** discounts, coupons, taxes, refunds, one-off charges (none exist in the data).
 
 ## MRR movements

@@ -355,7 +355,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
 
 ### Data tests and the invariants they enforce
 
-`dbt build` runs 167 data tests and 6 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 168 data tests and 6 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:
@@ -368,6 +368,7 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_logo_retention_at_most_100_pct` | Logo retention never exceeds 100% and is exactly 100% in month 0. |
 | `assert_no_negative_mrr` | MRR is never negative at any grain. |
 | `assert_mrr_matches_billing` | For every customer-month with MRR, the invoice in force, normalised to a month, equals that MRR. MRR comes from subscription events and invoices from billing, so this cross-checks two systems. |
+| `assert_monthly_amount_rounds_to_cents` | Monthly prices keep their cents, and annual charges round to the nearest cent after multiplying by seats, including half-cent ties and high-value amounts. |
 | `assert_payment_keeps_first_receipt` | A staged payment retains its earliest raw webhook receipt, including when a later delivery falls inside a different lookback window. |
 | `assert_paid_invoices_have_one_successful_payment` | Paid invoices have exactly one successful charge; open and uncollectible invoices have none. This only holds after staging drops duplicate payment webhooks. |
 | `assert_funnel_stages_only_narrow` | Trials never exceed signups and paid customers never exceed trials. |

@@ -93,7 +93,7 @@ DESIGN.md (decisions 14 to 16) explains why, and what the snapshot cannot record
 
 ## Tests
 
-`dbt build` runs 167 data tests and 6 unit tests and fails if any of them fails. Generic
+`dbt build` runs 168 data tests and 6 unit tests and fails if any of them fails. Generic
 tests guard keys, foreign keys and allowed values at every layer. Singular tests state the
 business rules: starting MRR plus the month's movements equals ending MRR in every month,
 each MRR change has exactly one movement type, and the MRR built from subscription events

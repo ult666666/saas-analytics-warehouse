@@ -1,6 +1,8 @@
 version: 2
 
 data_tests:
+  - name: assert_monthly_amount_rounds_to_cents
+    description: Whole-seat monthly and annual charges keep exact cents, including half-cent ties and large amounts.
   - name: assert_mrr_bridge_reconciles
     description: Starting MRR plus movements equals ending MRR in every month.
   - name: assert_mrr_movements_exclusive_and_exhaustive

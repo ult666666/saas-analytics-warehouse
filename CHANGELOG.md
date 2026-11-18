@@ -13,6 +13,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- The raw reconciliation exposed a rounding error for annual charges such as $10.62.
+  Monthly normalization now uses integer cents, and staging preserves large cent amounts.
 - A payment keeps its first webhook receipt across repeated incremental builds, even when
   the lookback cuts between two deliveries. `assert_payment_keeps_first_receipt` checks the
   stored timestamps against raw history. To repair older staged receipts flagged by that test,
