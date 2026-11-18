@@ -98,8 +98,9 @@ The five conditions are mutually exclusive and, for rows where MRR changed, exha
 - **Reactivation window:** there is no time limit. A customer who returns after any number of
   zero-MRR months is a reactivation, never a second `new`. A cancellation and a return within the
   same calendar month never show up at month end, so they produce neither churn nor reactivation.
-- **`churn_reason`** on churn rows is the `cancel_reason` of the cancel event that took effect
-  during that month: `voluntary` or `payment_failed`.
+- **`churn_reason`** on churn rows is the reason for the last cancellation effective in the
+  month. Ties use the latest occurrence timestamp, then the greatest event ID, matching the
+  order used for subscription periods. The reason is `voluntary` or `payment_failed`.
 
 ## MRR bridge
 

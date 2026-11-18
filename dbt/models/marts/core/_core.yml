@@ -223,7 +223,8 @@ unit_tests:
           - {customer_id: c1, month_start: "2024-07-01", cohort_month: "2024-01-01", previous_mrr_usd: 0, mrr_usd: 90, mrr_change_usd: 90}
       - input: ref('stg_subscription_events')
         rows:
-          - {customer_id: c1, event_type: cancel, occurred_at: "2024-05-12 10:00:00", effective_date: "2024-05-12", cancel_reason: payment_failed}
+          - {event_id: e1, customer_id: c1, event_type: cancel, occurred_at: "2024-05-12 10:00:00", effective_date: "2024-05-12", cancel_reason: voluntary}
+          - {event_id: e2, customer_id: c1, event_type: cancel, occurred_at: "2024-05-12 10:00:00", effective_date: "2024-05-12", cancel_reason: payment_failed}
     expect:
       rows:
         - {customer_id: c1, month_start: "2024-01-01", movement_type: new, mrr_change_usd: 100, churn_reason: null}
