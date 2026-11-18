@@ -109,7 +109,9 @@ After `make all`, run `make reconcile` to check two reporting marts directly aga
 files. It replays subscription events at each completed month end, prices the active seats,
 and compares MRR and paying customer counts to the bridge. It also sums raw marketing spend
 over the observed unit economics window for each channel and the blended total. The command
-prints the first mismatch and exits with code 1. For a different warehouse or lookback, run
+prints the first mismatch and exits with code 1. It needs at least one raw spend date to
+establish the calendar. A partial extract can cover zero completed months, and a completed
+month can have zero subscriptions. For a different warehouse or lookback, run
 `uv run python -m saasreport.reconcile --help`.
 
 ## Investigate a month's churn

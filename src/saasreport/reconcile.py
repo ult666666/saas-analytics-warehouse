@@ -6,7 +6,7 @@ import argparse
 import csv
 import sys
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from itertools import zip_longest
 from pathlib import Path
@@ -17,15 +17,36 @@ from saasgen.config import CHANNELS_BY_NAME
 from saasgen.dates import add_months, month_end, month_start
 
 
-def _read(raw_dir: Path, table: str) -> list[dict[str, str]]:
-    with (raw_dir / f"{table}.csv").open(encoding="utf-8", newline="") as stream:
-        return list(csv.DictReader(stream))
+def _read(raw_dir: Path, table: str, columns: set[str]) -> list[dict[str, str]]:
+    path = raw_dir / f"{table}.csv"
+    with path.open(encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream, strict=True)
+        try:
+            header = reader.fieldnames or []
+            missing = columns.difference(header)
+            if missing:
+                raise ValueError(f"{path.name}: missing columns {', '.join(sorted(missing))}")
+            if len(set(header)) != len(header):
+                raise ValueError(f"{path.name}: duplicate column names")
+            rows = []
+            for row in reader:
+                if None in row or None in row.values():
+                    raise ValueError(
+                        f"{path.name} line {reader.line_num}: expected {len(header)} fields"
+                    )
+                rows.append(row)
+        except csv.Error as error:
+            raise ValueError(f"{path.name} line {reader.line_num}: {error}") from error
+    return rows
 
 
 def _closed_months(spend: list[dict[str, str]]) -> list[date]:
-    days = [date.fromisoformat(row["spend_date"]) for row in spend]
+    try:
+        days = [date.fromisoformat(row["spend_date"]) for row in spend]
+    except ValueError as error:
+        raise ValueError(f"marketing_spend.csv: invalid spend_date: {error}") from error
     if not days:
-        return []
+        raise ValueError("marketing_spend.csv: no spend dates to establish the reporting calendar")
     first, last = min(days), max(days)
     month = month_start(first)
     if first != month:
@@ -37,19 +58,49 @@ def _closed_months(spend: list[dict[str, str]]) -> list[date]:
     return closed
 
 
+def _event_order(event: dict[str, str]) -> tuple[date, datetime, str]:
+    try:
+        effective = date.fromisoformat(event["effective_date"])
+    except ValueError as error:
+        raise ValueError(
+            f"subscription_events.csv event {event['event_id']}: invalid effective_date: {error}"
+        ) from error
+    try:
+        occurred = datetime.fromisoformat(event["occurred_at"])
+    except ValueError as error:
+        raise ValueError(
+            f"subscription_events.csv event {event['event_id']}: invalid occurred_at: {error}"
+        ) from error
+    # The raw timestamps are UTC wall-clock times, stored in a TIMESTAMP without a time zone.
+    return effective, occurred.replace(tzinfo=None), event["event_id"]
+
+
 def _balances(raw_dir: Path, months: list[date]) -> list[tuple[date, int, Decimal]]:
     """Replay events in effective order, observing the customer balances at each month end."""
-    prices = {row["plan_price_id"]: row for row in _read(raw_dir, "plans")}
+    plans = _read(raw_dir, "plans", {"plan_price_id", "unit_amount_cents", "billing_interval"})
+    prices = {row["plan_price_id"]: row for row in plans}
     events = sorted(
-        _read(raw_dir, "subscription_events"),
-        key=lambda row: (row["effective_date"], row["occurred_at"], row["event_id"]),
+        _read(
+            raw_dir,
+            "subscription_events",
+            {
+                "effective_date",
+                "occurred_at",
+                "event_id",
+                "customer_id",
+                "event_type",
+                "plan_price_id",
+                "seats",
+            },
+        ),
+        key=_event_order,
     )
     current: dict[str, Decimal] = {}
     balances = []
     index = 0
     for month in months:
-        cutoff = month_end(month).isoformat()
-        while index < len(events) and events[index]["effective_date"] <= cutoff:
+        cutoff = month_end(month)
+        while index < len(events) and date.fromisoformat(events[index]["effective_date"]) <= cutoff:
             event = events[index]
             index += 1
             customer = event["customer_id"]
@@ -94,7 +145,7 @@ def reconcile(raw_dir: Path, database: Path, lookback_months: int = 12) -> tuple
     """Raise on the first mismatch. Return the number of months and spend rows checked."""
     if lookback_months < 1:
         raise ValueError("lookback months must be positive")
-    spend = _read(raw_dir, "marketing_spend")
+    spend = _read(raw_dir, "marketing_spend", {"spend_date", "channel", "spend_cents"})
     months = _closed_months(spend)
     expected_spend = _channel_spend(spend, months[-lookback_months:])
     with duckdb.connect(str(database), read_only=True) as connection:

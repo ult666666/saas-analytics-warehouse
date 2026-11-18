@@ -99,3 +99,70 @@ def test_cli_fails_on_an_omitted_month_or_incorrect_measure(
     assert main(["--raw-dir", str(raw), "--database", str(database), "--lookback-months", "1"]) == 1
     error = capsys.readouterr().err
     assert metric in error and "raw CSVs give" in error and "warehouse gives" in error
+
+
+@pytest.mark.parametrize(
+    ("table", "contents", "message"),
+    [
+        ("marketing_spend", "", "missing columns"),
+        ("marketing_spend", "unrelated\n", "missing columns"),
+        ("marketing_spend", "spend_date,channel,spend_cents\n", "no spend dates"),
+        ("plans", "plan_price_id\n", "missing columns"),
+        ("subscription_events", "", "missing columns"),
+        (
+            "subscription_events",
+            "event_id,customer_id,event_type,effective_date,occurred_at,plan_price_id,seats\n"
+            "1,a,new,2024-01-31,2024-01-10,monthly\n",
+            "line 2",
+        ),
+    ],
+)
+def test_cli_names_incomplete_sources(
+    source_and_warehouse: tuple[Path, Path],
+    capsys: pytest.CaptureFixture[str],
+    table: str,
+    contents: str,
+    message: str,
+) -> None:
+    raw, database = source_and_warehouse
+    (raw / f"{table}.csv").write_text(contents)
+    assert main(["--raw-dir", str(raw), "--database", str(database)]) == 1
+    error = capsys.readouterr().err
+    assert f"{table}.csv" in error and message in error
+
+
+@pytest.mark.parametrize("field", ["effective_date", "occurred_at"])
+def test_rejects_invalid_event_dates_even_after_reporting_cutoff(
+    source_and_warehouse: tuple[Path, Path], capsys: pytest.CaptureFixture[str], field: str
+) -> None:
+    raw, database = source_and_warehouse
+    values = {"effective_date": "2024-03-31", "occurred_at": "2024-03-15"}
+    values[field] = "invalid"
+    with (raw / "subscription_events.csv").open("a") as stream:
+        stream.write(f"bad,a,cancel,{values['effective_date']},{values['occurred_at']},,\n")
+    assert main(["--raw-dir", str(raw), "--database", str(database), "--lookback-months", "1"]) == 1
+    assert field in capsys.readouterr().err
+
+
+def test_same_day_events_are_ordered_by_timestamp_then_event_id(
+    source_and_warehouse: tuple[Path, Path],
+) -> None:
+    raw, database = source_and_warehouse
+    with (raw / "subscription_events.csv").open("a") as stream:
+        stream.write(
+            "tie3,b,upgrade,2024-02-29,2024-02-29 17:00:00,monthly,2\n"
+            "tie2,b,upgrade,2024-02-29,2024-02-29T17:00:00,monthly,5\n"
+            "tie1,b,upgrade,2024-02-29,2024-02-29T08:30:00,monthly,4\n"
+        )
+    assert reconcile(raw, database, lookback_months=1) == (2, 6)
+
+
+def test_complete_months_can_have_zero_subscriptions(
+    source_and_warehouse: tuple[Path, Path],
+) -> None:
+    raw, database = source_and_warehouse
+    events = raw / "subscription_events.csv"
+    events.write_text(events.read_text().splitlines()[0] + "\n")
+    with duckdb.connect(str(database)) as connection:
+        connection.execute("update marts.rpt_mrr_bridge set ending_mrr_usd=0, ending_customers=0")
+    assert reconcile(raw, database, lookback_months=1) == (2, 6)
