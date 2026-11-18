@@ -13,6 +13,8 @@ data_tests:
     description: MRR is never negative at any grain.
   - name: assert_paid_invoices_have_one_successful_payment
     description: Paid invoices have one successful payment; others have none.
+  - name: assert_payment_keeps_first_receipt
+    description: Each staged payment retains the earliest receipt in the raw delivery history.
   - name: assert_mrr_matches_billing
     description: Every active customer-month is covered by an invoice whose monthly amount equals MRR.
   - name: assert_funnel_stages_only_narrow

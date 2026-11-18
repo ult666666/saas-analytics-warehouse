@@ -8,6 +8,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- A payment keeps its first webhook receipt across repeated incremental builds, even when
+  the lookback cuts between two deliveries. `assert_payment_keeps_first_receipt` checks the
+  stored timestamps against raw history. To repair older staged receipts flagged by that test,
+  run `cd dbt && DBT_PROFILES_DIR=. uv run dbt run --full-refresh --select stg_payments`.
 - Month-end MRR, retention and unit economics stop at the last observed month end during
   daily loads. The report shows the actual unit economics dates, including shorter histories.
 - The report builds for sparse datasets, including a period before the first paying customer.

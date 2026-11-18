@@ -93,12 +93,13 @@ DESIGN.md (decisions 14 to 16) explains why, and what the snapshot cannot record
 
 ## Tests
 
-`dbt build` runs 166 data tests and 5 unit tests and fails if any of them fails. Generic
+`dbt build` runs 167 data tests and 6 unit tests and fails if any of them fails. Generic
 tests guard keys, foreign keys and allowed values at every layer. Singular tests state the
 business rules: starting MRR plus the month's movements equals ending MRR in every month,
 each MRR change has exactly one movement type, and the MRR built from subscription events
 matches what billing invoiced. The unit tests pin period boundaries, annual-to-monthly
-normalisation, every movement type and the as-of boundaries of the current state and completed reporting months.
+normalisation, every movement type, the as-of boundaries of the current state and completed
+months, and the first receipt when a payment webhook is replayed.
 
 pytest covers the generator, the report and the churn investigation, and CI fails below
 85% line and branch coverage. The [testing strategy](docs/DESIGN.md#testing-strategy)
