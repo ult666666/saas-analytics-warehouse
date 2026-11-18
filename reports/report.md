@@ -51,7 +51,7 @@ Failed payments (involuntary churn) caused 35% of the churned MRR in this period
 
 Rates are pooled over every cohort old enough to reach that month (ratio of sums).
 
-## Unit economics, trailing 12 months
+## Unit economics, Jan 2025 to Dec 2025
 
 ![CAC payback by channel](figures/cac_payback.png)
 
@@ -78,7 +78,7 @@ LTV = ARPA x 80% gross margin / monthly logo churn (constant churn, undiscounted
 | Partner | 1,238 | 1,055 | 326 | 85.2% | 30.9% | 26.3% |
 | Organic | 6,052 | 4,296 | 904 | 71.0% | 21.0% | 14.9% |
 
-Only signup cohorts that ended at least 30 days before the data ends are included.
+Only mature signup cohorts are included. The default waiting period is 30 days after the signup month ends.
 
 ## MRR by plan (Dec 2025)
 

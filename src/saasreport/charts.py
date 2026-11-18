@@ -10,7 +10,13 @@ import numpy as np
 from matplotlib.ticker import FuncFormatter, PercentFormatter
 
 from saasreport.data import CHANNEL_LABELS, ReportData, pooled_retention
-from saasreport.formatting import month_label, pct, signed_usd_compact, usd_compact
+from saasreport.formatting import (
+    economics_period,
+    month_label,
+    pct,
+    signed_usd_compact,
+    usd_compact,
+)
 from saasreport.style import (
     DECREASE,
     INK,
@@ -263,10 +269,11 @@ def plot_cac_payback(data: ReportData, path: Path) -> Path:
     style_axes(axes, grid_axis="x")
     axes.tick_params(axis="y", colors=INK_SECONDARY, labelsize=10)
     margin = data.economics[0].gross_margin
+    window = economics_period(data)
     add_titles(
         figure,
         "CAC payback by acquisition channel",
-        f"Trailing 12 months. CAC / (ARPA x {margin:.0%} gross margin). "
+        (f"{window}. " if window else "") + f"CAC / (ARPA x {margin:.0%} gross margin). "
         "Organic signups have no spend, so no CAC.",
     )
     return save(figure, path)
@@ -321,7 +328,7 @@ def plot_funnel(data: ReportData, path: Path) -> Path:
     add_titles(
         figure,
         "Funnel conversion by acquisition channel",
-        "Signup cohorts that ended at least 30 days before the data ends",
+        "Signup cohorts that have reached the configured maturity window",
     )
     return save(figure, path)
 

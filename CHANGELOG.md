@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- Month-end MRR, retention and unit economics stop at the last observed month end during
+  daily loads. The report shows the actual unit economics dates, including shorter histories.
 - The report builds for sparse datasets, including a period before the first paying customer.
   Inactive channels have zero new customers, undefined rates display as `n/a`, and charts
   explain when the data contain no eligible observations.

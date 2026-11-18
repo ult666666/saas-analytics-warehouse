@@ -1,7 +1,7 @@
 -- Company-level MRR bridge: for every month, starting MRR plus the movements equals ending MRR.
 
 with calendar_months as (
-    select distinct month_start from {{ ref('dim_date') }}
+    select month_start from {{ ref('int_reporting_months') }}
 ),
 
 monthly_mrr as (

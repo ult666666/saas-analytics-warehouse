@@ -200,6 +200,19 @@ def test_short_history_shrinks_the_trailing_window(tmp_path: Path) -> None:
     build_report(database, tmp_path / "reports")
     report = (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
     assert "## MRR bridge, Jan 2024 to Mar 2024" in report
+    assert "trailing 12 months" not in report  # older marts have no window dates
+
+
+def test_report_uses_observed_economics_dates_from_the_mart(marts_db: Path) -> None:
+    with duckdb.connect(str(marts_db)) as connection:
+        connection.execute(
+            """
+            alter table marts.rpt_unit_economics add window_start date default date '2024-12-01';
+            alter table marts.rpt_unit_economics add window_end date default date '2025-02-28';
+            """
+        )
+        report = render_markdown(load_report_data(connection))
+    assert "## Unit economics, Dec 2024 to Feb 2025" in report
 
 
 def test_report_before_the_first_paying_customer(tmp_path: Path) -> None:

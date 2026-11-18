@@ -53,7 +53,7 @@ data matches them. The [dbt project](dbt) builds four layers on top:
 
 - staging, one model per source, which casts types, cleans hand-typed values and removes
   duplicate payment webhooks and old invoice versions;
-- intermediate models for the date spine, subscription periods, the customer-month spine,
+- intermediate models for the daily calendar, completed reporting months, subscription periods, the customer-month spine,
   the signup funnel and the current subscription state;
 - a star schema of core marts, with `fct_mrr` (one row per customer-month) and
   `fct_mrr_movements`;
@@ -86,19 +86,19 @@ make incremental-check                        # load day by day, build, compare 
 make incremental-check MONTHS=6 SCALE=0.25 DAILY_DAYS=14   # the shorter run CI does
 ```
 
-The check compares 24 relations, row by row, with a full refresh of the same files, and
+The check compares 25 relations, row by row, with a full refresh of the same files, and
 with the default seed it reports `Incremental build equals the full refresh.` At this data
 size incremental builds are not faster, because the sources are CSV files read in full;
 DESIGN.md (decisions 14 to 16) explains why, and what the snapshot cannot record.
 
 ## Tests
 
-`dbt build` runs 166 data tests and 3 unit tests and fails if any of them fails. Generic
+`dbt build` runs 166 data tests and 5 unit tests and fails if any of them fails. Generic
 tests guard keys, foreign keys and allowed values at every layer. Singular tests state the
 business rules: starting MRR plus the month's movements equals ending MRR in every month,
 each MRR change has exactly one movement type, and the MRR built from subscription events
 matches what billing invoiced. The unit tests pin period boundaries, annual-to-monthly
-normalisation, every movement type and the as-of boundary of the current state.
+normalisation, every movement type and the as-of boundaries of the current state and completed reporting months.
 
 pytest covers the generator, the report and the churn investigation, and CI fails below
 85% line and branch coverage. The [testing strategy](docs/DESIGN.md#testing-strategy)

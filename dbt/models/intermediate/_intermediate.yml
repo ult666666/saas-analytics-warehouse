@@ -58,10 +58,18 @@ models:
               arguments:
                 expression: "mrr_usd > 0"
 
+  - name: int_reporting_months
+    description: Calendar months whose first and last days are present in the continuous daily spine.
+    columns:
+      - name: month_start
+        description: First day of the completed month.
+      - name: month_end
+        description: Last day of the completed month.
+
   - name: int_customer_months
     description: >
-      Customer x month spine from each customer's first subscription month to the last month
-      of data, with no gaps, including months after churn.
+      Customer x month spine from each customer's first subscription month to the last completed
+      calendar month, with no gaps, including months after churn.
     data_tests:
       - unique_combination_of_columns:
           arguments:
@@ -166,6 +174,21 @@ models:
         data_tests: [not_null]
 
 unit_tests:
+  - name: reporting_months_require_both_calendar_boundaries
+    model: int_reporting_months
+    given:
+      - input: ref('int_date_spine')
+        rows:
+          - {date_day: "2024-01-15"}
+          - {date_day: "2024-01-31"}
+          - {date_day: "2024-02-01"}
+          - {date_day: "2024-02-29"}
+          - {date_day: "2024-03-01"}
+          - {date_day: "2024-03-14"}
+    expect:
+      rows:
+        - {month_start: "2024-02-01", month_end: "2024-02-29"}
+
   - name: subscription_periods_end_when_the_next_event_takes_effect
     description: >
       Each event opens a period that ends when the next event takes effect; cancel events end

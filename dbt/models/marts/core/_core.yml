@@ -89,8 +89,11 @@ models:
       - name: converted_at
         description: Time of the first payment.
       - name: cohort_month
-        description: First month with month-end MRR above zero; the customer's retention cohort.
-        data_tests: [not_null]
+        description: First completed month with positive MRR. Null until the first paid month end.
+        data_tests:
+          - expression_is_true:
+              arguments:
+                expression: "(cohort_month is not null) = (active_months > 0)"
       - name: first_plan_code
         description: Plan in the cohort month.
       - name: first_billing_interval
@@ -98,9 +101,9 @@ models:
       - name: first_mrr_usd
         description: MRR at the end of the cohort month.
       - name: current_plan_code
-        description: Plan at the end of the last month of data; null when not active.
+        description: Plan at the end of the last completed month; null when not active.
       - name: current_mrr_usd
-        description: MRR at the end of the last month of data (0 when churned).
+        description: MRR at the end of the last completed month (0 when churned).
       - name: is_active
         description: True when current_mrr_usd is above zero.
       - name: active_months
@@ -113,8 +116,8 @@ models:
   - name: fct_mrr
     description: >
       Monthly recurring revenue per customer per month, measured on the last day of the month.
-      Covers every month from the customer's first subscription month to the last month of
-      data, including zero-MRR months after churn, so consecutive rows are consecutive months.
+      Covers every month from the customer's first subscription month to the last completed
+      month, including zero-MRR months after churn, so consecutive rows are consecutive months.
     data_tests:
       - unique_combination_of_columns:
           arguments:

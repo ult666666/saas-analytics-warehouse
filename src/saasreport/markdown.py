@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from saasreport.data import CHANNEL_LABELS, ReportData, pooled_retention
-from saasreport.formatting import month_label, optional, pct, signed_usd, usd
+from saasreport.formatting import economics_period, month_label, optional, pct, signed_usd, usd
 
 RETENTION_CHECKPOINTS = (1, 3, 6, 12, 24)
 
@@ -105,11 +105,12 @@ def render_markdown(data: ReportData) -> str:
         ["Months since start", "Cohorts", "Logo retention", "Net revenue retention"],
         retention_rows,
     )
+    economics_window = economics_period(data)
     lines += [
         "",
         "Rates are pooled over every cohort old enough to reach that month (ratio of sums).",
         "",
-        "## Unit economics, trailing 12 months",
+        "## Unit economics" + (f", {economics_window}" if economics_window else ""),
         "",
         "![CAC payback by channel](figures/cac_payback.png)",
         "",
@@ -179,7 +180,8 @@ def render_markdown(data: ReportData) -> str:
     )
     lines += [
         "",
-        "Only signup cohorts that ended at least 30 days before the data ends are included.",
+        "Only mature signup cohorts are included. The default waiting period is 30 days after "
+        "the signup month ends.",
     ]
 
     if data.plan_mix:
