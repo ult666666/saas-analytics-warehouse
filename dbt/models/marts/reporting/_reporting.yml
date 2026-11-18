@@ -97,7 +97,8 @@ models:
       - name: marketing_spend_usd
         description: Spend in the window.
       - name: new_customers
-        description: Customers whose first MRR month falls in the window.
+        description: Customers whose first MRR month falls in the window. Zero for inactive channels.
+        data_tests: [not_null]
       - name: cac_usd
         description: marketing_spend_usd / new_customers; null for organic (no spend).
       - name: arpa_usd

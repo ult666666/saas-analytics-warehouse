@@ -348,7 +348,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
 
 ### Data tests and the invariants they enforce
 
-`dbt build` runs 165 data tests and 3 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 166 data tests and 3 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:

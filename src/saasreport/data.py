@@ -72,8 +72,8 @@ class ChannelFunnel:
         return self.trials / self.signups if self.signups else 0.0
 
     @property
-    def trial_to_paid(self) -> float:
-        return self.paid / self.trials if self.trials else 0.0
+    def trial_to_paid(self) -> float | None:
+        return self.paid / self.trials if self.trials else None
 
     @property
     def signup_to_paid(self) -> float:

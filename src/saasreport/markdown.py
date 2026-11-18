@@ -27,9 +27,9 @@ def render_markdown(data: ReportData) -> str:
     losses = sum(month.contraction + month.churned for month in window)
     churned = sum(month.churned for month in window)
     involuntary = sum(month.involuntary_churned for month in window)
-    logo_churn = sum(month.churned_customers for month in window) / max(
-        1, sum(month.starting_customers for month in window)
-    )
+    at_risk = sum(month.starting_customers for month in window)
+    logo_churn = sum(month.churned_customers for month in window) / at_risk if at_risk else None
+    arpa = last.ending_mrr / last.ending_customers if last.ending_customers else None
 
     lines = [
         "# Tallyloom metrics report",
@@ -48,11 +48,11 @@ def render_markdown(data: ReportData) -> str:
         ["Ending MRR", usd(last.ending_mrr)],
         ["ARR (MRR x 12)", usd(last.ending_mrr * 12)],
         ["Paying customers", f"{last.ending_customers:,}"],
-        ["ARPA (MRR per paying customer)", usd(last.ending_mrr / max(1, last.ending_customers))],
+        ["ARPA (MRR per paying customer)", optional(arpa, "${:,.0f}")],
         [f"MRR growth, {period}", optional(_growth(start_mrr, last.ending_mrr), "{:+.1%}")],
         [f"Net new MRR, {period}", signed_usd(last.ending_mrr - start_mrr)],
         [f"Quick ratio, {period}", optional(gains / -losses if losses else None, "{:.2f}")],
-        [f"Average monthly logo churn, {period}", pct(logo_churn, 2)],
+        [f"Average monthly logo churn, {period}", optional(logo_churn, "{:.2%}")],
     ]
     lines += table(["Metric", "Value"], headline)
 
@@ -160,7 +160,7 @@ def render_markdown(data: ReportData) -> str:
             f"{row.trials:,}",
             f"{row.paid:,}",
             pct(row.signup_to_trial),
-            pct(row.trial_to_paid),
+            optional(row.trial_to_paid, "{:.1%}"),
             pct(row.signup_to_paid),
         ]
         for row in data.funnel

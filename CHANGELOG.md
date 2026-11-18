@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Fixed
+
+- The report builds for sparse datasets, including a period before the first paying customer.
+  Inactive channels have zero new customers, undefined rates display as `n/a`, and charts
+  explain when the data contain no eligible observations.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added

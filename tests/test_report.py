@@ -27,7 +27,7 @@ from saasreport.formatting import (
     usd,
     usd_compact,
 )
-from saasreport.markdown import table
+from saasreport.markdown import render_markdown, table
 
 MART_DDL = """
     create schema marts;
@@ -200,6 +200,41 @@ def test_short_history_shrinks_the_trailing_window(tmp_path: Path) -> None:
     build_report(database, tmp_path / "reports")
     report = (tmp_path / "reports" / "report.md").read_text(encoding="utf-8")
     assert "## MRR bridge, Jan 2024 to Mar 2024" in report
+
+
+def test_report_before_the_first_paying_customer(tmp_path: Path) -> None:
+    database = tmp_path / "sparse.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        connection.execute(MART_DDL)
+        connection.execute(
+            """
+            insert into marts.rpt_mrr_bridge values
+                ('2024-01-01', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            insert into marts.rpt_unit_economics values
+                ('paid_search', 200, 0, null, null, 0.8, null, null, null, null),
+                ('all_channels', 200, 0, null, null, 0.8, null, null, null, null);
+            insert into marts.rpt_funnel values
+                ('2024-01-01', 'paid_search', 5, 0, 0, false);
+            """
+        )
+    written = build_report(database, tmp_path / "reports")
+    assert len(written) == 6
+    assert all(path.stat().st_size > 0 for path in written)
+    report = written[-1].read_text()
+    assert "| Paying customers | 0 |" in report
+    assert "| ARPA (MRR per paying customer) | n/a |" in report
+    assert "| Average monthly logo churn, Jan 2024 to Jan 2024 | n/a |" in report
+    assert "| Paid search | $200 | 0 | n/a | n/a |" in report
+
+
+def test_zero_trials_has_an_undefined_trial_conversion_rate(marts_db: Path, tmp_path: Path) -> None:
+    with duckdb.connect(str(marts_db)) as connection:
+        connection.execute(
+            "insert into marts.rpt_funnel values ('2024-01-01', 'content', 10, 0, 0, true)"
+        )
+        data = load_report_data(connection)
+    assert "| Content | 10 | 0 | 0 | 0.0% | n/a | 0.0% |" in render_markdown(data)
+    assert build_report(marts_db, tmp_path / "reports")[4].stat().st_size > 0
 
 
 def test_missing_database_is_a_usage_error(

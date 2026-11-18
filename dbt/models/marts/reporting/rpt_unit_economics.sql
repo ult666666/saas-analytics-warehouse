@@ -70,7 +70,7 @@ metrics as (
     select
         channel_totals.channel,
         channel_totals.marketing_spend_usd,
-        channel_activity.new_customers,
+        coalesce(channel_activity.new_customers, 0) as new_customers,
         -- No spend means no CAC: organic customers are not free, their cost is unmeasured.
         case
             when channel_totals.marketing_spend_usd > 0
