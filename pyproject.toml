@@ -31,6 +31,9 @@ dev = [
     "ruff>=0.17",
     "sqlfluff>=4.4.0",
 ]
+pages = [
+    "markdown-it-py>=4,<5",
+]
 
 [build-system]
 requires = ["hatchling>=1.27"]

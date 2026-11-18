@@ -40,7 +40,7 @@ assumed 80% gross margin:
 | Organic | n/a | $442 | 3.12% | $11,322 | n/a | n/a |
 | All channels (blended) | $3,332 | $518 | 2.99% | $13,868 | 8.0 months | 4.2x |
 
-The [full report](reports/report.md) adds the MRR trend, cohort retention, CAC payback
+The [published report](https://ult666666.github.io/saas-analytics-warehouse/report/) and its [Markdown source](reports/report.md) include the MRR trend, cohort retention, CAC payback
 by channel, the signup funnel and MRR by plan, including how much MRR is still billed at
 pre-price-change list prices.
 

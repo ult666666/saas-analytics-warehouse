@@ -19,7 +19,7 @@ Data covers Jan 2023 to Dec 2025. MRR is measured on the last day of each month.
 | Quick ratio, Jan 2025 to Dec 2025 | 2.72 |
 | Average monthly logo churn, Jan 2025 to Dec 2025 | 2.99% |
 
-![Ending MRR by month](figures/mrr_trend.png)
+![Month-end MRR from $14,749 in Jan 2023 to $1,147,877 in Dec 2025](figures/mrr_trend.png)
 
 ## MRR bridge, Jan 2025 to Dec 2025
 
