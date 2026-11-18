@@ -45,6 +45,9 @@ jobs:
       - name: Render the generated report for GitHub Pages
         run: uv run --locked --group pages python site/build_report.py "$RUNNER_TEMP/reports/report.md" "$RUNNER_TEMP/published-report"
 
+      - name: Reconcile raw subscription events and marketing spend to the marts
+        run: make reconcile
+
       - name: Reconcile a historical churn investigation to the built marts
         run: uv run python -m saasreport.churn --month 2024-12 --output-dir "$RUNNER_TEMP/churn-2024-12"
 

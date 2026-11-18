@@ -201,15 +201,18 @@ unit_tests:
           - {event_id: e2, customer_id: c1, event_type: upgrade, occurred_at: "2024-02-20 09:00:00", effective_date: "2024-03-15", plan_price_id: growth_monthly_v1, seats: 12}
           - {event_id: e3, customer_id: c1, event_type: cancel, occurred_at: "2024-05-01 08:00:00", effective_date: "2024-06-15", cancel_reason: voluntary}
           - {event_id: e4, customer_id: c2, event_type: new, occurred_at: "2024-02-01 12:00:00", effective_date: "2024-02-01", plan_price_id: growth_annual_v1, seats: 5}
+          - {event_id: e5, customer_id: c3, event_type: new, occurred_at: "2024-02-01 12:00:00", effective_date: "2024-02-01", plan_price_id: large_annual, seats: 2}
       - input: ref('stg_plans')
         rows:
           - {plan_price_id: growth_monthly_v1, plan_code: growth, plan_tier: 2, billing_interval: month, unit_amount_usd: 29.00}
           - {plan_price_id: growth_annual_v1, plan_code: growth, plan_tier: 2, billing_interval: year, unit_amount_usd: 278.40}
+          - {plan_price_id: large_annual, plan_code: growth, plan_tier: 2, billing_interval: year, unit_amount_usd: "9999999999999999.90"}
     expect:
       rows:
         - {subscription_period_id: e1, customer_id: c1, valid_from: "2024-01-15", valid_to: "2024-03-15", is_open: false, seats: 10, mrr_usd: 290.00}
         - {subscription_period_id: e2, customer_id: c1, valid_from: "2024-03-15", valid_to: "2024-06-15", is_open: false, seats: 12, mrr_usd: 348.00}
         - {subscription_period_id: e4, customer_id: c2, valid_from: "2024-02-01", valid_to: null, is_open: true, seats: 5, mrr_usd: 116.00}
+        - {subscription_period_id: e5, customer_id: c3, valid_from: "2024-02-01", valid_to: null, is_open: true, seats: 2, mrr_usd: "1666666666666666.65"}
 
   - name: subscription_state_is_the_period_in_force_on_the_last_day
     description: >

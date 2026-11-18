@@ -37,8 +37,10 @@ periods as (
         prices.plan_tier,
         prices.billing_interval,
         sequenced.seats,
-        {{ monthly_amount('sequenced.seats * prices.unit_amount_usd', 'prices.billing_interval') }}
-            as mrr_usd
+        -- A multi-seat annual charge can exceed the monthly column's range before normalization.
+        {{ monthly_amount(
+            'cast(sequenced.seats as bigint) * prices.unit_amount_usd', 'prices.billing_interval'
+        ) }} as mrr_usd
     from sequenced
     inner join prices
         on sequenced.plan_price_id = prices.plan_price_id

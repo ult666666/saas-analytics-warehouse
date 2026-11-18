@@ -93,7 +93,7 @@ DESIGN.md (decisions 14 to 16) explains why, and what the snapshot cannot record
 
 ## Tests
 
-`dbt build` runs 167 data tests and 6 unit tests and fails if any of them fails. Generic
+`dbt build` runs 168 data tests and 6 unit tests and fails if any of them fails. Generic
 tests guard keys, foreign keys and allowed values at every layer. Singular tests state the
 business rules: starting MRR plus the month's movements equals ending MRR in every month,
 each MRR change has exactly one movement type, and the MRR built from subscription events
@@ -104,6 +104,15 @@ months, and the first receipt when a payment webhook is replayed.
 pytest covers the generator, the report and the churn investigation, and CI fails below
 85% line and branch coverage. The [testing strategy](docs/DESIGN.md#testing-strategy)
 lists every invariant, and the breaks used to check that the tests can fail.
+
+After `make all`, run `make reconcile` to check two reporting marts directly against the raw
+files. It replays subscription events at each completed month end, prices the active seats,
+and compares MRR and paying customer counts to the bridge. It also sums raw marketing spend
+over the observed unit economics window for each channel and the blended total. The command
+prints the first mismatch and exits with code 1. It needs at least one raw spend date to
+establish the calendar. A partial extract can cover zero completed months, and a completed
+month can have zero subscriptions. For a different warehouse or lookback, run
+`uv run python -m saasreport.reconcile --help`.
 
 ## Investigate a month's churn
 

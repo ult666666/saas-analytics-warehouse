@@ -328,6 +328,7 @@ a short version (6 months, the last 14 days one at a time) on every push.
 | Business invariants | dbt singular tests (`dbt/tests/`) | The bridge reconciles, movements are exclusive and exhaustive, periods never overlap, retention is bounded, MRR is non-negative, billing agrees with MRR, payments agree with invoices, funnels only narrow. |
 | Transformation logic | dbt unit tests | Hand-written inputs for `int_subscription_periods` and `fct_mrr_movements` produce the expected rows, including annual normalisation and every movement type. |
 | Report | pytest (`tests/test_report.py`) | The report renders from a miniature copy of the marts, is byte-for-byte reproducible and refuses a bridge that does not reconcile. |
+| Raw-to-mart reconciliation | `make reconcile` | Replay subscription events against raw prices and check each month-end MRR and customer count. Sum raw spend by channel and compare the observed unit economics window and totals. CI runs the check on its generated warehouse. |
 | Daily batches | pytest (`tests/test_batches.py`) | Loading every batch gives back the dataset (the newest version of each invoice); no row arrives before it is known or more than 5 days late; the late share is within 4 standard deviations of 3%; invoices get a second version exactly when their status changes. |
 | Load simulation | pytest (`tests/test_backfill.py`) and `make incremental-check` | Landing, the warehouse comparison and the order of steps (with a fake dbt); then, for real, an incremental build that equals a full refresh. |
 | History | dbt singular tests and a unit test | Snapshot windows are contiguous, one current version per customer, current versions equal the current-state model, history agrees with `fct_mrr` at every month end, and the state model's as-of boundary. |
@@ -354,7 +355,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
 
 ### Data tests and the invariants they enforce
 
-`dbt build` runs 167 data tests and 6 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 168 data tests and 6 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:
@@ -367,6 +368,7 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_logo_retention_at_most_100_pct` | Logo retention never exceeds 100% and is exactly 100% in month 0. |
 | `assert_no_negative_mrr` | MRR is never negative at any grain. |
 | `assert_mrr_matches_billing` | For every customer-month with MRR, the invoice in force, normalised to a month, equals that MRR. MRR comes from subscription events and invoices from billing, so this cross-checks two systems. |
+| `assert_monthly_amount_rounds_to_cents` | Monthly prices keep their cents, and annual charges round to the nearest cent after multiplying by seats, including half-cent ties and high-value amounts. |
 | `assert_payment_keeps_first_receipt` | A staged payment retains its earliest raw webhook receipt, including when a later delivery falls inside a different lookback window. |
 | `assert_paid_invoices_have_one_successful_payment` | Paid invoices have exactly one successful charge; open and uncollectible invoices have none. This only holds after staging drops duplicate payment webhooks. |
 | `assert_funnel_stages_only_narrow` | Trials never exceed signups and paid customers never exceed trials. |
