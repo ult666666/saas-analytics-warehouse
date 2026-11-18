@@ -24,19 +24,15 @@ renamed as (
     from source
 ),
 
-recent as (
-    -- received_at is when the webhook reached the warehouse. The lookback window keeps the
-    -- first delivery of a payment in view when its redelivery arrives.
-    select * from renamed
+recent_keys as (
+    -- The window selects payments to revisit. A later delivery can qualify its
+    -- payment_id even when the first receipt is already outside the window.
+    select payment_id from renamed
     where {{ incremental_lookback('received_at') }}
-),
-
-deduplicated as (
-    -- The payment webhook delivers at least once, so a payment can arrive twice.
-    -- Keep the first delivery of each payment_id.
-    select *
-    from recent
-    qualify row_number() over (partition by payment_id order by received_at) = 1
 )
 
-select * from deduplicated
+select renamed.*
+from renamed
+semi join recent_keys
+    on renamed.payment_id is not distinct from recent_keys.payment_id
+qualify row_number() over (partition by renamed.payment_id order by renamed.received_at) = 1

@@ -307,3 +307,36 @@ models:
       - name: received_at
         description: When the webhook reached the warehouse; used to keep the first delivery.
         data_tests: [not_null]
+
+unit_tests:
+  - name: payment_redelivery_straddling_the_lookback_keeps_first_receipt
+    description: >-
+      The 17:00 cutoff splits two deliveries for the same payment. The qualifying
+      redelivery must select the complete history for its key, including the 16:48 receipt.
+    model: stg_payments
+    overrides:
+      macros:
+        is_incremental: true
+      vars:
+        incremental_lookback_days: 7
+    given:
+      - input: this
+        format: sql
+        rows: |
+          select * from (values
+            ('split', timestamp '2024-06-03 16:48:50'),
+            ('watermark', timestamp '2024-06-10 17:00:00')
+          ) as staged_payments(payment_id, received_at)
+      - input: source('raw', 'payments')
+        format: sql
+        rows: |
+          select * from (values
+            ('split', 'inv_1', '1', '2024-06-03 16:45:00', '193200', 'succeeded', null, '2024-06-03 16:48:50'),
+            ('split', 'inv_1', '1', '2024-06-03 16:45:00', '193200', 'succeeded', null, '2024-06-03 17:45:50'),
+            ('watermark', 'inv_2', '1', '2024-06-10 16:55:00', '100', 'succeeded', null, '2024-06-10 17:00:00'),
+            ('untouched', 'inv_3', '1', '2024-06-01 16:00:00', '100', 'succeeded', null, '2024-06-01 16:00:01')
+          ) as raw_payments(payment_id, invoice_id, attempt_number, attempted_at, amount_cents, status, failure_code, received_at)
+    expect:
+      rows:
+        - {payment_id: split, received_at: "2024-06-03 16:48:50"}
+        - {payment_id: watermark, received_at: "2024-06-10 17:00:00"}

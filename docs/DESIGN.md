@@ -232,10 +232,12 @@ column filtered in the next CTE, which is the more portable pattern.
 window.** `stg_signups`, `stg_trials`, `stg_subscription_events`, `stg_invoices`,
 `stg_payments` and `stg_marketing_spend` are dbt incremental models. On an incremental run,
 the `incremental_lookback` macro keeps the source rows whose timestamp is at most
-`incremental_lookback_days` (7) older than the newest row already loaded. The model removes
-duplicates within that window (the first delivery of a payment, the newest version of an
-invoice), and the `delete+insert` strategy deletes the loaded rows with the same unique key
-before inserting the new ones. A late row is therefore picked up if it is at most a week late,
+`incremental_lookback_days` (7) older than the newest row already loaded. For invoices, the
+newest update within that window wins. For payments, the window selects the payment IDs to
+revisit, then each ID's earliest receipt is read from the cumulative raw file. A cutoff can
+split two deliveries of the same payment, so choosing the earliest only within the window
+would move the receipt forward on a retry. The `delete+insert` strategy deletes the loaded
+rows with the same unique key before inserting the new ones. A late row is therefore picked up if it is at most a week late,
 and a row seen twice replaces its earlier copy instead of duplicating it. The four strategies
 dbt-duckdb offers:
 
@@ -352,7 +354,7 @@ so a bug in the model's `case` expression cannot also hide in the test.
 
 ### Data tests and the invariants they enforce
 
-`dbt build` runs 166 data tests and 5 unit tests, and fails if any of them fails. Generic tests
+`dbt build` runs 167 data tests and 6 unit tests, and fails if any of them fails. Generic tests
 (`unique`, `not_null`, `relationships`, `accepted_values`, plus the project's own
 `unique_combination_of_columns` and `expression_is_true`) guard keys, foreign keys and allowed
 values at every layer. Singular tests enforce the business invariants:
@@ -365,6 +367,7 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_logo_retention_at_most_100_pct` | Logo retention never exceeds 100% and is exactly 100% in month 0. |
 | `assert_no_negative_mrr` | MRR is never negative at any grain. |
 | `assert_mrr_matches_billing` | For every customer-month with MRR, the invoice in force, normalised to a month, equals that MRR. MRR comes from subscription events and invoices from billing, so this cross-checks two systems. |
+| `assert_payment_keeps_first_receipt` | A staged payment retains its earliest raw webhook receipt, including when a later delivery falls inside a different lookback window. |
 | `assert_paid_invoices_have_one_successful_payment` | Paid invoices have exactly one successful charge; open and uncollectible invoices have none. This only holds after staging drops duplicate payment webhooks. |
 | `assert_funnel_stages_only_narrow` | Trials never exceed signups and paid customers never exceed trials. |
 | `assert_snapshot_windows_are_contiguous` | A customer's snapshot versions never overlap and leave no gaps. |
@@ -372,9 +375,9 @@ values at every layer. Singular tests enforce the business invariants:
 | `assert_snapshot_matches_current_state` | The current versions equal `int_subscription_state`. |
 | `assert_snapshot_history_matches_month_end_mrr` | Every version in force on a month end agrees with `fct_mrr`, which is rebuilt from the full event log. |
 
-The five dbt unit tests cover period boundaries, annual-to-monthly normalisation, every
-movement type, the current subscription state, completed reporting months and a sparse
-unit economics window. On the
+The six dbt unit tests cover payment redelivery across the lookback boundary, subscription
+period boundaries, annual-to-monthly normalisation, every movement type, the current
+subscription state, completed reporting months and a sparse unit economics window. On the
 Python side, pytest covers generator determinism, referential integrity, date ordering, billing
 consistency and calibration (generated rates against configured parameters), plus the report and
 the churn investigation. CI reports line and branch coverage on every run and fails below 85%.
