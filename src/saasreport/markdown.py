@@ -19,6 +19,7 @@ def table(headers: list[str], rows: list[list[str]], numeric_columns: int = 1) -
 
 
 def render_markdown(data: ReportData) -> str:
+    first = data.bridge[0]
     last = data.last_month
     window = data.trailing_months(12)
     start_mrr = window[0].starting_mrr
@@ -58,7 +59,8 @@ def render_markdown(data: ReportData) -> str:
 
     lines += [
         "",
-        "![Ending MRR by month](figures/mrr_trend.png)",
+        f"![Month-end MRR from {usd(first.ending_mrr)} in {month_label(first.month_start)} "
+        f"to {usd(last.ending_mrr)} in {month_label(last.month_start)}](figures/mrr_trend.png)",
         "",
         f"## MRR bridge, {period}",
         "",

@@ -36,12 +36,14 @@ jobs:
         run: |
           make data
           make build
+          make report
           make docs
 
       - name: Assemble the site
         run: |
-          mkdir -p site
-          cp dbt/target/static_index.html site/index.html
+          mkdir -p build/pages
+          cp dbt/target/static_index.html build/pages/index.html
+          make report-site
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
@@ -49,7 +51,7 @@ jobs:
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: build/pages
 
   deploy:
     name: Deploy to GitHub Pages

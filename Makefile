@@ -13,7 +13,7 @@ export DBT_PROFILES_DIR := $(CURDIR)/dbt
 export DBT_SEND_ANONYMOUS_USAGE_STATS := False
 
 .DEFAULT_GOAL := help
-.PHONY: help install data build report docs all lint test incremental-check clean
+.PHONY: help install data build report report-site docs all lint test incremental-check clean
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-17s %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ build: ## Load, transform and test the warehouse (dbt build)
 
 report: ## Write the charts and report.md to reports/
 	uv run saasreport --database $(WAREHOUSE) --output-dir reports
+
+report-site: ## Render the report and charts for the web in build/pages/report/
+	uv run --locked --group pages python site/build_report.py reports/report.md build/pages/report
 
 docs: ## Generate the static dbt docs page (dbt/target/static_index.html)
 	cd dbt && uv run dbt docs generate --static
