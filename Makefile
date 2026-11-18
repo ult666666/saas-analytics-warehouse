@@ -13,7 +13,7 @@ export DBT_PROFILES_DIR := $(CURDIR)/dbt
 export DBT_SEND_ANONYMOUS_USAGE_STATS := False
 
 .DEFAULT_GOAL := help
-.PHONY: help install data build report report-site docs all lint test incremental-check clean
+.PHONY: help install data build report report-site docs all lint test reconcile incremental-check clean
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-17s %s\n", $$1, $$2}'
@@ -50,6 +50,9 @@ lint: ## Ruff lint, ruff format check, mypy and sqlfluff
 
 test: ## Python tests with coverage
 	uv run pytest
+
+reconcile: ## Independently check month-end MRR, paying customers and channel spend against raw CSVs
+	uv run python -m saasreport.reconcile
 
 incremental-check: ## Load day by day, build incrementally and compare with a full refresh
 	uv run python -m saasgen.backfill --seed $(SEED) --months $(MONTHS) --scale $(SCALE) \

@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `make reconcile` independently checks monthly MRR, paying customers and channel spend
+  against the raw subscription, pricing and marketing files.
+
 ### Fixed
 
 - A payment keeps its first webhook receipt across repeated incremental builds, even when

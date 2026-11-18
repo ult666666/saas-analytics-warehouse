@@ -105,6 +105,13 @@ pytest covers the generator, the report and the churn investigation, and CI fail
 85% line and branch coverage. The [testing strategy](docs/DESIGN.md#testing-strategy)
 lists every invariant, and the breaks used to check that the tests can fail.
 
+After `make all`, run `make reconcile` to check two reporting marts directly against the raw
+files. It replays subscription events at each completed month end, prices the active seats,
+and compares MRR and paying customer counts to the bridge. It also sums raw marketing spend
+over the observed unit economics window for each channel and the blended total. The command
+prints the first mismatch and exits with code 1. For a different warehouse or lookback, run
+`uv run python -m saasreport.reconcile --help`.
+
 ## Investigate a month's churn
 
 ```bash
